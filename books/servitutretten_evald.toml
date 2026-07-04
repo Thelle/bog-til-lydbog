@@ -1,0 +1,26 @@
+name = "Servitutretten (Jens Evald 2021)"
+output_dir = 'Y:\Mit drev\Learning\LE34\Bøger_og_artikler\Servitutretten_Jens-Evald_2021'
+source_photos = 'C:\Users\thc\Pictures\2026-07-01'
+source_glob = "*.JPG"
+split_spreads = true
+voice = "da-DK-JeppeNeural"
+
+# Kapitler detekteres via VERSAL "KAPITEL N" i sideteksten; titler herunder.
+detect = "kapitel"
+
+# Brødtekst slutter side 266; 267+ = litteratur/lov-/doms-/stikordsregister.
+body_end = 267
+
+[titles]
+1 = "Om servitutretten"
+2 = "Hovedtræk af servitutrettens udvikling"
+3 = "Privatretlige servitutter - Begreber, indhold og afgrænsninger"
+4 = "Privatretlige servitutter - Fortolkning og ugyldighed"
+5 = "Stiftelse af servitutter ved retshandel"
+6 = "Stiftelse af servitutter ved hævd"
+7 = "Privatretlige servitutter - Tinglysning"
+8 = "Privatretlig påtale og håndhævelse"
+9 = "Offentligretlig håndhævelse af privatretlige servitutter"
+10 = "Privatretlige servitutter - Fortolknings- og dispensationsret"
+11 = "Privatretlige servitutters ophør"
+12 = "Offentligretlige servitutter"

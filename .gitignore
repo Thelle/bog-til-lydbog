@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+
+# Output/data hører til i bogens output_dir (uden for repoet), aldrig her:
+pages_hq/
+tekst/
+mp3/
+tmp_pages/
+*.mp3

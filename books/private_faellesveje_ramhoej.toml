@@ -1,0 +1,54 @@
+name = "Private fællesveje (Ramhøj 2016)"
+output_dir = 'Y:\Mit drev\Learning\LE34\Bøger_og_artikler\Private_faellesveje_Ramhoej_2016'
+source_photos = 'C:\Users\thc\Pictures\01-07-2026_billeder_Ramhøj Privatvejsloven'
+source_glob = "*.JPG"
+split_spreads = true
+voice = "da-DK-JeppeNeural"
+
+# Kapitler detekteres ikke automatisk (OCR-støj gør det upålideligt) — grænserne
+# er fundet manuelt (kør 'detect' og juster). page = sideindeks i pages_hq/.
+detect = "manual"
+
+# Brødtekst slutter side 240; 241+ = domsregister/forkortelser/stikord.
+body_end = 241
+
+[[chapters]]
+num = 0
+page = 5
+title = "Forord"
+[[chapters]]
+num = 1
+page = 7
+title = "Privatvejsret"
+[[chapters]]
+num = 2
+page = 63
+title = "Etablering"
+[[chapters]]
+num = 3
+page = 84
+title = "Færdsel"
+[[chapters]]
+num = 4
+page = 102
+title = "Forandringer"
+[[chapters]]
+num = 5
+page = 134
+title = "Istandsættelse og vedligeholdelse"
+[[chapters]]
+num = 6
+page = 192
+title = "Anden brug end færdsel"
+[[chapters]]
+num = 7
+page = 212
+title = "Vintervedligeholdelse og renholdelse"
+[[chapters]]
+num = 8
+page = 220
+title = "Erstatning og servitutbortfald"
+[[chapters]]
+num = 9
+page = 225
+title = "Kommunens sagsbehandling"

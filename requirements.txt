@@ -1,0 +1,7 @@
+# Python 3.11+ (tomllib er indbygget). Testet på 3.14.
+edge-tts          # tekst -> MP3 (Microsoft neurale stemmer, gratis)
+page-dewarp       # retter bogryggens krumning (trækker opencv-python + matplotlib med)
+opencv-python     # billedbehandling (fallback-threshold)
+numpy
+pillow            # billed-I/O og padding
+wordfreq          # dansk ordliste til volapyk-filter
