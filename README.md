@@ -66,9 +66,16 @@ python run.py all    servitutretten_evald      # tekst + MP3 for alle kapitler
 - Konsistent rækkefølge = siderne kommer i rigtig orden automatisk.
 
 ### 2. OCR  ·  `python run.py ocr <bog>`
-Splitter hvert foto i to sider (ved midten), padder med hvid kant, udretter med
-`page-dewarp -x 0`, og OCR'er med Tesseract `--psm 3`. Resultat: `pages_hq/000.txt`,
-`001.txt`, … Tager ~15 s/side (4 workers). Rører ingen søgbar PDF.
+Splitter hvert foto i to sider **ved den detekterede bogryg** (ikke blindt ved
+midten — se nedenfor), padder med hvid kant, udretter med `page-dewarp -x 0`, og
+OCR'er med Tesseract `--psm 3`. Resultat: `pages_hq/000.txt`, `001.txt`, …
+Tager ~15 s/side (4 workers). Rører ingen søgbar PDF.
+
+> **Indholds-bevidst split:** bogen ligger sjældent præcist centreret i billedet,
+> så et blindt midtpunkt-split (`w/2`) skærer tekst af den bredeste side (målt:
+> en stor del af siderne var ramt). Pipelinen finder i stedet bogryggen som det
+> tekst-tyndeste gab mellem de to tekstblokke og splitter dér. Slå fra med
+> `split_at_gutter = false` i config, hvis en bog altid er perfekt centreret.
 
 Sider hvor dewarp ikke kan fitte tekstlinjer (figurer/kort/titelsider) falder
 tilbage til bilateral filter + adaptiv threshold — de beholder lidt dårligere
@@ -121,6 +128,11 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
 
 ## Hvorfor sådan (beslutninger vi ikke skal genopfinde)
 
+- **Indholds-bevidst split** (find bogryggen pr. foto) frem for blindt midtpunkt.
+  Bogen ligger skævt i mange fotos, og midtpunkt-split skar tekst af den bredeste
+  side — en overraskende hyppig kilde til "svingende kvalitet". Ryggen findes som
+  det tekst-tyndeste gab (projektions-profil), ikke den mørkeste kolonne (som
+  fejlagtigt fanger tætte tekstkolonner).
 - **Dewarp + Tesseract slår EasyOCR** til denne opgave. EasyOCR gav perfekte
   diakritika men **scramblede læserækkefølgen** i de krumme rygområder og læste
   danske citationstegn `» «` som `m`/`s`/`v`/`<`. Læserækkefølge er afgørende for

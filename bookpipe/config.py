@@ -18,6 +18,7 @@ class BookConfig:
     source_photos: str = ""
     source_glob: str = "*.JPG"
     split_spreads: bool = True
+    split_at_gutter: bool = True           # detektér bogryg pr. foto (ikke blindt midtpunkt)
     # Kapitler
     detect: str = "manual"                 # "manual" eller "kapitel"
     body_end: int | None = None            # sidste brødtekstside+1 (klip register væk)
@@ -52,6 +53,7 @@ def load(path):
         source_photos=data.get("source_photos", ""),
         source_glob=data.get("source_glob", "*.JPG"),
         split_spreads=data.get("split_spreads", True),
+        split_at_gutter=data.get("split_at_gutter", True),
         detect=data.get("detect", "manual"),
         body_end=data.get("body_end"),
         chapters=data.get("chapters", []),

@@ -29,19 +29,48 @@ TESSDATA = os.environ.get("TESSDATA_PREFIX", r"C:\Program Files\Tesseract-OCR\te
 PAD = 120
 
 
+def detect_gutter(img_path, band=(0.36, 0.64)):
+    """Find bogryggen som midten af det bredeste lav-tætheds-GAB mellem de to
+    tekstblokke i midterbåndet (lodret projektions-profil). Robust mod at bogen
+    ligger skævt — et blindt midtpunkt-split skærer ellers tekst af den bredeste
+    side. Søgebåndet er snævert (±14 %), så ægte rygge (observeret ±10 %) findes,
+    mens vilde fejldetektioner undgås. Falder tilbage til midtpunkt uden klart gab."""
+    g = np.array(ImageOps.grayscale(Image.open(img_path)))
+    h, w = g.shape
+    _, bw = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    col = bw.sum(axis=0).astype(float)                 # tekst-tæthed pr. kolonne
+    k = max(9, w // 150)
+    col = np.convolve(col, np.ones(k) / k, mode="same")
+    lo, hi = int(w * band[0]), int(w * band[1])
+    low = col[lo:hi] < 0.12 * col.max()                # under tærskel = "ingen tekst"
+    best_len = best_start = cur_len = cur_start = 0
+    for i, v in enumerate(low):
+        if v:
+            cur_start = i if cur_len == 0 else cur_start
+            cur_len += 1
+            if cur_len > best_len:
+                best_len, best_start = cur_len, cur_start
+        else:
+            cur_len = 0
+    if best_len == 0:
+        return w // 2
+    return lo + best_start + best_len // 2
+
+
 def split_spreads(cfg):
-    """Split dobbeltopslag-fotos til enkelt-sider (venstre + højre halvdel)."""
+    """Split dobbeltopslag-fotos til enkelt-sider ved den DETEKTEREDE bogryg
+    (ikke blindt midtpunkt), så tekst ikke skæres af når bogen ligger skævt."""
     os.makedirs(cfg.tmp_dir, exist_ok=True)
     files = sorted(glob.glob(os.path.join(cfg.source_photos, cfg.source_glob)))
-    print(f"Splitter {len(files)} dobbeltopslag...")
+    print(f"Splitter {len(files)} dobbeltopslag ved detekteret bogryg...")
     page = 0
     for f in files:
         img = Image.open(f)
         w, h = img.size
-        mid = w // 2
-        img.crop((0, 0, mid, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
+        cut = detect_gutter(f) if cfg.split_at_gutter else w // 2
+        img.crop((0, 0, cut, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
         page += 1
-        img.crop((mid, 0, w, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
+        img.crop((cut, 0, w, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
         page += 1
     print(f"  {page} enkelt-sider -> {cfg.tmp_dir}")
     return page
