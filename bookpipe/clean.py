@@ -13,6 +13,26 @@ import re
 from .dictionary import is_real_word, has_dictionary
 
 
+def normalize_easyocr(text):
+    """Ret EasyOCR's systematiske fejllæsninger (mest relevant for TTS-udtale).
+    De øvrige EasyOCR-særheder (semikolon for komma, mistede » «) er stumme i
+    oplæsning og røres ikke."""
+    text = text.replace("$", "§")                        # § læst som $
+    text = re.sub(r"\b0g\b", "og", text)                 # og -> 0g
+    text = re.sub(r"%g\b", "og", text)                   # og -> %g
+    text = re.sub(r"(?<=[a-zæøå]) 1 (?=[a-zæøå])", " i ", text)  # i -> 1 mellem små ord
+    text = re.sub(r"^1 (?=[a-zæøå])", "i ", text, flags=re.M)
+    return text
+
+
+def _is_statute_box(s):
+    """Grå §-citatboks (fuld lovtekst) — bruger ikke i lyd/tekst. EasyOCR holder
+    dem som blokke der starter med '§ NN.' eller 'Stk. N.'. Inline-henvisninger
+    ('jf. § 14', 'efter § 44') starter IKKE med § og rammes derfor ikke."""
+    return bool(re.match(r"^§\s*\d+\s*[a-zA-Z]?\.\s*[A-ZÆØÅ]", s)
+                or re.match(r"^Stk\.\s*\d", s))
+
+
 def _word_quality(w):
     """Score 0.0-1.0: hvor sandsynligt er dette et rigtigt dansk ord?"""
     clean = re.sub(r"[^a-zA-ZæøåÆØÅ]", "", w)
@@ -185,12 +205,15 @@ def _is_nonword_line(s, known):
 
 def clean_for_tts(text, known=frozenset()):
     """Orkestrér al rensning + reflow. `known` er korpus-ordbogen (build_known)."""
+    text = normalize_easyocr(text)
     seen_headers = set()
     out = []
     for ln in text.split("\n"):
         s = _clean_line(ln)
         s = _strip_trailing_garbage_words(s)
         if not s:
+            continue
+        if _is_statute_box(s):                         # grå §-citatboks -> drop
             continue
         if re.fullmatch(r"\d{1,4}", s):
             continue

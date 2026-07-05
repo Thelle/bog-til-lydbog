@@ -11,33 +11,45 @@ Kogebog + kode så man ikke starter forfra hver gang der tages billeder af en bo
 
 ## Den vigtigste indsigt
 
-> **Rodårsagen til dårlig OCR er som regel IKKE billedkvaliteten — det er bogryggens
-> krumning**, der bøjer tekstlinjerne nær falsen og laver volapyk. Telefonfotos af
-> en opslået bog er typisk skarpe nok; problemet er geometrien.
+> **Det der lyder som "scramblet" OCR er sjældent uskarpe billeder — det er tre
+> konkrete, målbare ting:** (1) bogryggens **krumning**, der får en linjes højre
+> halvdel til at "dryppe" ned i næste linje; (2) **gennemslag** — den svage
+> spejlvendte tekst fra bagsiden, som OCR læser som støj-tokens midt i teksten;
+> og (3) **register-/indekssider læst højt**. Telefonfotos af en opslået bog er
+> typisk skarpe nok; problemet er geometri, gennemslag og layout.
 
-Derfor **dewarp** (udretning) frem for at jage bedre kontrast/OCR-engine. Og det
-meste af den "svingende kvalitet" man hører i lyden er slet ikke OCR-fejl, men
-**register-/indekssider læst højt** — dem klipper vi fra.
+Derfor angriber pipelinen dem ét for ét: **dewarp** (ScanTailor) mod krumning,
+**hvidpunkt-klip** mod gennemslag, **EasyOCR** mod dryp-scramble, og
+**register-/§-boks-/fodnote-filtre** mod det der ikke skal læses højt.
 
 ---
 
 ## Forudsætninger
 
-**1. Tesseract OCR** (med dansk sprogdata)
-- Windows: installér fra <https://github.com/UB-Mannheim/tesseract/wiki>, vælg
-  sprog **Danish** under install. Standardsti: `C:\Program Files\Tesseract-OCR\`.
-- Tjek: `tesseract --version` og at `tessdata\dan.traineddata` findes.
-- Andre stier? Sæt miljøvariabler `TESSERACT_EXE` og `TESSDATA_PREFIX`.
+**1. ScanTailor Advanced** (split + deskew + dewarp)
+- Det gennemtestede værktøj til efterbehandling af scannede bogsider. Klarer den
+  indholds-bevidste sideopdeling, deskew og dewarp (bogryg-krumning) robust.
+  Kører i **grayscale** (`color_grayscale`), ikke 1-bit — det bevarer diakritika
+  (æøå) og § langt bedre.
+- Windows: installér ScanTailor Advanced. Pipelinen bruger `scantailor-cli.exe`.
+  Standardsti: `C:\Program Files\Scan Tailor\scantailor-cli.exe`.
+- Anden sti? Sæt miljøvariabel `SCANTAILOR_CLI`.
 
-**2. Python 3.11+** (testet på 3.14 — `tomllib` er indbygget).
+**2. EasyOCR** (dansk + engelsk, via pip)
+- Installeres med `pip install -r requirements.txt`. Første kørsel henter
+  sprogmodellerne (kræver internet én gang).
+- Kører på CPU (~40 s/side). Slår Tesseract på **læserækkefølge** ved krumme
+  sider og holder §-citatbokse som separate blokke (se beslutninger nedenfor).
+
+**3. Python 3.11+** (testet på 3.14 — `tomllib` er indbygget).
 
 ```bash
 pip install -r requirements.txt
 ```
 
-`page-dewarp` trækker `opencv-python` + `matplotlib` med. `wordfreq` bundter den
-danske ordliste lokalt (ingen net nødvendig efter install). `edge-tts` bruger
-Microsofts gratis online-stemme (kræver internet ved MP3-generering).
+Pip-pakker: `easyocr` (OCR), `wordfreq` (dansk ordliste lokalt) og `edge-tts`
+(Microsofts gratis online-stemme, kræver internet ved MP3-generering).
+Sideopdeling/dewarp laver ScanTailor.
 
 ---
 
@@ -66,20 +78,19 @@ python run.py all    servitutretten_evald      # tekst + MP3 for alle kapitler
 - Konsistent rækkefølge = siderne kommer i rigtig orden automatisk.
 
 ### 2. OCR  ·  `python run.py ocr <bog>`
-Splitter hvert foto i to sider **ved den detekterede bogryg** (ikke blindt ved
-midten — se nedenfor), padder med hvid kant, udretter med `page-dewarp -x 0`, og
-OCR'er med Tesseract `--psm 3`. Resultat: `pages_hq/000.txt`, `001.txt`, …
-Tager ~15 s/side (4 workers). Rører ingen søgbar PDF.
+Tre trin: (1) **ScanTailor** (`--layout=2 --deskew=auto --dewarping=auto
+--color-mode=color_grayscale`) opdeler hvert opslag ved bogryggen, retter skævhed
+og krumning, og udsender grå-skala sidebilleder; (2) **hvidpunkt-klip** klipper
+den grå baggrund + gennemslag fra bagsiden til hvidt (styres af `OCR_WHITE_POINT`,
+standard 165); (3) **EasyOCR** (paragraph-mode) OCR'er hver side i rigtig
+læserækkefølge. Resultat: `pages_hq/000.txt`, `001.txt`, … Rører ingen søgbar PDF.
 
-> **Indholds-bevidst split:** bogen ligger sjældent præcist centreret i billedet,
-> så et blindt midtpunkt-split (`w/2`) skærer tekst af den bredeste side (målt:
-> en stor del af siderne var ramt). Pipelinen finder i stedet bogryggen som det
-> tekst-tyndeste gab mellem de to tekstblokke og splitter dér. Slå fra med
-> `split_at_gutter = false` i config, hvis en bog altid er perfekt centreret.
-
-Sider hvor dewarp ikke kan fitte tekstlinjer (figurer/kort/titelsider) falder
-tilbage til bilateral filter + adaptiv threshold — de beholder lidt dårligere
-diakritik, men det er en lille brøkdel.
+> **Hvorfor ScanTailor til opdelingen:** bogen ligger sjældent præcist centreret
+> i billedet, så et blindt midtpunkt-split (`w/2`) skærer tekst af den bredeste
+> side (målt: en stor del af siderne var ramt — en overraskende stor kilde til
+> "svingende kvalitet"). ScanTailor finder bogryggen indholds-bevidst og
+> deskewer/dewarper hver side. Sæt `split_spreads = false` i config for bøger
+> fotograferet én side ad gangen (ScanTailor layout=1).
 
 ### 3. Find kapitelgrænser  ·  `python run.py detect <bog>`
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
@@ -128,17 +139,30 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
 
 ## Hvorfor sådan (beslutninger vi ikke skal genopfinde)
 
-- **Indholds-bevidst split** (find bogryggen pr. foto) frem for blindt midtpunkt.
-  Bogen ligger skævt i mange fotos, og midtpunkt-split skar tekst af den bredeste
-  side — en overraskende hyppig kilde til "svingende kvalitet". Ryggen findes som
-  det tekst-tyndeste gab (projektions-profil), ikke den mørkeste kolonne (som
-  fejlagtigt fanger tætte tekstkolonner).
-- **Dewarp + Tesseract slår EasyOCR** til denne opgave. EasyOCR gav perfekte
-  diakritika men **scramblede læserækkefølgen** i de krumme rygområder og læste
-  danske citationstegn `» «` som `m`/`s`/`v`/`<`. Læserækkefølge er afgørende for
-  en lydbog, så dewarp+Tesseract vandt.
-- **`-x 0` i page-dewarp** undgår at venstre tekstkant beskæres.
-- **Hvid padding før dewarp** så kant-tekst ikke remappes ud af billedet.
+- **ScanTailor til split + deskew + dewarp** frem for håndkodet billedbehandling.
+  Bogen ligger skævt i mange fotos, og et blindt midtpunkt-split skar tekst af den
+  bredeste side — en overraskende hyppig kilde til "svingende kvalitet". ScanTailor
+  finder bogryggen indholds-bevidst og deskewer/dewarper robust. (En tidligere
+  custom pipeline med projektions-profil-split + `page-dewarp` virkede, men
+  ScanTailor er renere, mere komplet og mindre kode at vedligeholde.)
+- **Grayscale, ikke 1-bit.** ScanTailors `black_and_white` laver tegnfejl på
+  diakritika ("feellesvej", "$" for "§"). `color_grayscale` bevarer dem — men så
+  følger den grå baggrund og **gennemslaget** med, hvilket løses i næste punkt.
+- **Hvidpunkt-klip mod gennemslag.** Telefonfotos har ingen ren hvid baggrund
+  (hele siden måler ~200 grå), og den svage spejlvendte tekst fra bagsiden bliver
+  OCR'et som støj-tokens ("NE", "A b") midt i linjerne — det der lignede scramble.
+  Et simpelt hvidpunkt-klip (lyst -> hvidt) fjerner det uden at røre den mørke tekst.
+- **EasyOCR slår Tesseract** — efter grayscale+hvidpunkt. Tesseracts rækkebaserede
+  layout-analyse flækker linjer hvis højresiden "drypper" nær ryggen
+  ("servitutforpligtet udfører" bliver til to stumper). EasyOCR detekterer
+  tekst-regioner enkeltvis og bevarer rækkefølgen. Dens svagheder (semikolon for
+  komma, mistede `» «`) er **stumme i oplæsning**. Pris: ~40 s/side mod ~0,7 s.
+  (§ læses som `$`, `og` som `0g`/`%g` — rettes i `clean.normalize_easyocr`.)
+- **§-citatbokse droppes.** De grå, kursiverede lovtekst-bokse har lav kontrast og
+  er svære at få i rækkefølge; de gengiver ordret lovtekst der også er dækket i
+  brødteksten. EasyOCR holder dem som blokke der starter med "§ NN.", så
+  `clean._is_statute_box` fjerner dem fra både tekst og lyd. (Billed-maskering blev
+  fravalgt: hele siden er grå, så §-boksen kan ikke isoleres pålideligt på niveau.)
 - **Registertrim (`body_end`)** fjerner det der lyder værst i lyden: sider med
   domsregistre, litteraturlister og stikordsregister læst op som en strøm af tal.
 - **Ordbogsfilter** (`wordfreq` + bogens eget korpus) fjerner selvstændige
@@ -151,11 +175,21 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
 
 ## Kendte begrænsninger
 
+- **Kapitel-åbningssider og fodnote-tunge sider** kan stadig scramble lidt: stor
+  titel + indryk + fodnote-blok forvirrer læserækkefølgen. Det er få sider pr. bog
+  og typisk i starten af et kapitel. Fodnoter filtreres desuden fra i `clean.py`.
 - Få 2-token-fragmenter med ét tilfældigt rigtigt ord (`Fyre`, `TRIO Error`)
   overlever — at fange dem ville risikere rigtige stednavns-billedtekster.
-- På fallback-sider smelter kort volapyk nogle gange sammen med rigtig tekst
-  (`im ikk taal tans, bal tilladelse...`); det kræver sætnings-niveau korrektion
-  at fjerne sikkert.
+- **§-citatbokse fjernes helt** (se beslutninger). Ønsker man lovteksten med,
+  slå `clean._is_statute_box`-filteret fra — men forvent scramblet rækkefølge i
+  de grå bokse.
+- ScanTailors auto-mode rammer langt de fleste sider, men kan enkeltvis vælge en
+  suboptimal split/content-boks (fx figur- eller titelsider). Kør bogen gennem
+  ScanTailor **GUI'en** og ret dem visuelt, hvis en side ser forkert ud, og OCR
+  derefter output-billederne.
+- **Hastighed:** EasyOCR på CPU er ~40 s/side (≈3 t for en bog på ~250 sider).
+  Kør OCR-trinnet natten over. Har du et CUDA-GPU, kan `gpu=True` i `ocr.py`
+  sætte farten markant op.
 
 ---
 
@@ -164,9 +198,9 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
 | Symptom | Årsag / løsning |
 |---|---|
 | `UnicodeEncodeError ... charmap` | Windows cp1252-konsol. `run.py` sætter selv UTF-8; kald ellers med `PYTHONIOENCODING=utf-8`. |
-| `cv2.imread ... can't open` på æ/ø-stier | OpenCV kan ikke Unicode-stier — pipelinen indlæser derfor via PIL. |
+| ScanTailor finder ikke / 0 sider | Tjek stien til `scantailor-cli.exe` (sæt `SCANTAILOR_CLI`). Æ/ø i kildesti håndteres ved at kopiere til ASCII-navne først. |
+| Sider opdelt/skæve forkert | Kør bogen i ScanTailor **GUI'en**, ret split/deskew visuelt, OCR så output. |
 | Kapitler starter forkert | Juster `page`/`body_end` i config, kør `detect` igen. |
-| Mange fallback-sider | Bogen er meget krum, eller siderne er mest figurer. Prøv fladere fotos. |
 | Ingen MP3 / netværksfejl | edge-tts kræver internet; der er indbygget retry (5 forsøg). |
 
 ---
@@ -179,8 +213,8 @@ bog-til-lydbog/
   requirements.txt
   README.md              # denne kogebog
   bookpipe/
-    ocr.py               # split + dewarp + Tesseract -> pages_hq/
-    clean.py             # al tekstrensning + reflow
+    ocr.py               # ScanTailor (grayscale) + hvidpunkt + EasyOCR -> pages_hq/
+    clean.py             # al tekstrensning + reflow (+ §-boks-drop, EasyOCR-normalisering)
     dictionary.py        # wordfreq + korpus-ordbog (volapyk-filter)
     chapters.py          # detektion, opdeling, skrivning af tekst/MP3
     tts.py               # edge-tts med retry
@@ -190,5 +224,5 @@ bog-til-lydbog/
     servitutretten_evald.toml
 ```
 
-Output (`pages_hq/`, `tekst/`, `mp3/`, `tmp_pages/`) lægges i hver bogs
-`output_dir` — **uden for** repoet.
+Output (`pages_hq/`, `tekst/`, `mp3/`) lægges i hver bogs `output_dir` —
+**uden for** repoet. ScanTailor/Tesseract-mellemfiler ligger i en temp-mappe.

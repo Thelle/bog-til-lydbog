@@ -1,134 +1,110 @@
 """
-Høj-kvalitets tekst-OCR fra bogfotos.
+Høj-kvalitets tekst-OCR fra bogfotos — ScanTailor Advanced + EasyOCR.
 
-Trin pr. dobbeltopslag-foto:
-  1. Split i venstre/højre enkelt-side (ved midtpunkt).
-Trin pr. enkelt-side:
-  2. Hvid padding (så kant-tekst ikke tabes ved dewarp-remap).
-  3. page-dewarp (-x 0) retter bogryggens krumning — den egentlige rodårsag
-     til volapyk, ikke billedkvaliteten. -x 0 undgår venstrekant-beskæring.
-  4. Tesseract --psm 3, dan+eng.
-Sider hvor dewarp ikke kan fitte tekstlinjer (figurer/kort/titelsider) falder
-tilbage til bilateral filter + adaptiv threshold. Output: pages_hq/NNN.txt.
+Flow (tre trin, hver løser ét konkret problem vi har målt os frem til):
 
-Rører IKKE nogen søgbar PDF — dette er en separat, langsommere tekst-OCR til TTS.
+  1. scantailor-cli: originale opslag -> indholds-bevidst SIDEOPDELING (layout=2),
+     DESKEW + DEWARP + despeckle. Udsender grå-skala side-TIFFs (color_grayscale),
+     som bevarer diakritika (æøå) og § langt bedre end 1-bit black_and_white.
+
+  2. HVIDPUNKT-KLIP: telefonfotos har ingen ren hvid baggrund — hele siden er
+     ~200 grå, og den svage SPEJLVENDTE TEKST fra bagsiden (gennemslag) står
+     tydeligt. Uden dette læser OCR gennemslaget som støj-tokens midt i linjerne
+     ("NE", "A b", "SYES") = det der lignede scramble. Klip alt lysere end WHITE_PT
+     til hvidt; den mørke rigtige tekst overlever.
+
+  3. EasyOCR (paragraph): slår Tesseract på netop denne opgave. Tesseracts
+     rækkebaserede layout-analyse scrambler når en linjes højre halvdel "drypper"
+     nær bogryggen (fx "servitutforpligtet udfører" flækkes). EasyOCR detekterer
+     tekst-regioner enkeltvis og læser dem i rigtig rækkefølge. Bonus: den holder
+     de grå §-citatbokse som separate blokke der starter med "§ NN." — clean.py
+     kan droppe dem rent. Pris: ~40 s/side (CPU) mod Tesseracts ~0,7 s.
+
+Rører ingen søgbar PDF. ScanTailor skal være installeret (se README).
 """
 import os
 import sys
 import glob
+import shutil
 import subprocess
 import time
-from concurrent.futures import ProcessPoolExecutor
 
-from PIL import Image, ImageOps
-import cv2
-import numpy as np
+from PIL import Image
 
-TESS = os.environ.get("TESSERACT_EXE", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-TESSDATA = os.environ.get("TESSDATA_PREFIX", r"C:\Program Files\Tesseract-OCR\tessdata")
-PAD = 120
+SCANTAILOR = os.environ.get("SCANTAILOR_CLI", r"C:\Program Files\Scan Tailor\scantailor-cli.exe")
+WHITE_PT = int(os.environ.get("OCR_WHITE_POINT", "165"))   # hvidpunkt-klip (0-255)
 
 
-def detect_gutter(img_path, band=(0.36, 0.64)):
-    """Find bogryggen som midten af det bredeste lav-tætheds-GAB mellem de to
-    tekstblokke i midterbåndet (lodret projektions-profil). Robust mod at bogen
-    ligger skævt — et blindt midtpunkt-split skærer ellers tekst af den bredeste
-    side. Søgebåndet er snævert (±14 %), så ægte rygge (observeret ±10 %) findes,
-    mens vilde fejldetektioner undgås. Falder tilbage til midtpunkt uden klart gab."""
-    g = np.array(ImageOps.grayscale(Image.open(img_path)))
-    h, w = g.shape
-    _, bw = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    col = bw.sum(axis=0).astype(float)                 # tekst-tæthed pr. kolonne
-    k = max(9, w // 150)
-    col = np.convolve(col, np.ones(k) / k, mode="same")
-    lo, hi = int(w * band[0]), int(w * band[1])
-    low = col[lo:hi] < 0.12 * col.max()                # under tærskel = "ingen tekst"
-    best_len = best_start = cur_len = cur_start = 0
-    for i, v in enumerate(low):
-        if v:
-            cur_start = i if cur_len == 0 else cur_start
-            cur_len += 1
-            if cur_len > best_len:
-                best_len, best_start = cur_len, cur_start
-        else:
-            cur_len = 0
-    if best_len == 0:
-        return w // 2
-    return lo + best_start + best_len // 2
+def _workdir(cfg):
+    return os.path.join(os.environ.get("TEMP", "."), "st_" + os.path.basename(cfg.output_dir))
 
 
-def split_spreads(cfg):
-    """Split dobbeltopslag-fotos til enkelt-sider ved den DETEKTEREDE bogryg
-    (ikke blindt midtpunkt), så tekst ikke skæres af når bogen ligger skævt."""
-    os.makedirs(cfg.tmp_dir, exist_ok=True)
-    files = sorted(glob.glob(os.path.join(cfg.source_photos, cfg.source_glob)))
-    print(f"Splitter {len(files)} dobbeltopslag ved detekteret bogryg...")
-    page = 0
-    for f in files:
-        img = Image.open(f)
-        w, h = img.size
-        cut = detect_gutter(f) if cfg.split_at_gutter else w // 2
-        img.crop((0, 0, cut, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
-        page += 1
-        img.crop((cut, 0, w, h)).save(os.path.join(cfg.tmp_dir, f"{page:03d}.jpg"), quality=95)
-        page += 1
-    print(f"  {page} enkelt-sider -> {cfg.tmp_dir}")
-    return page
+def run_scantailor(cfg):
+    """Kør scantailor-cli (split + deskew + dewarp) på alle originalfotos.
+    Kopierer først til ASCII-navne (ScanTailor bryder sig ikke om æ/ø-stier) med
+    nul-polstrede numre, så output-TIFFs sorterer i korrekt siderækkefølge.
+    Returnerer listen af side-TIFFs i rækkefølge."""
+    wd = _workdir(cfg)
+    st_in, st_out = os.path.join(wd, "in"), os.path.join(wd, "out")
+    for d in (st_in, st_out):
+        shutil.rmtree(d, ignore_errors=True)
+        os.makedirs(d, exist_ok=True)
 
+    photos = sorted(glob.glob(os.path.join(cfg.source_photos, cfg.source_glob)))
+    for i, p in enumerate(photos):
+        shutil.copy(p, os.path.join(st_in, f"{i:03d}.jpg"))
+    imgs = sorted(glob.glob(os.path.join(st_in, "*.jpg")))
 
-def _fallback_preprocess(img_path, out_png):
-    """Dewarp fejlede: gråtone + bilateral filter + adaptiv threshold."""
-    g = ImageOps.grayscale(Image.open(img_path))
-    arr = np.array(g)
-    arr = cv2.bilateralFilter(arr, 9, 75, 75)
-    arr = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                cv2.THRESH_BINARY, 31, 15)
-    Image.fromarray(arr).save(out_png)
-
-
-def _process_page(args):
-    pi, src_jpg, tmpp, pages_hq = args
-    os.environ["TESSDATA_PREFIX"] = TESSDATA
-    # 1. Hvid padding
-    img = Image.open(src_jpg).convert("RGB")
-    padded = ImageOps.expand(img, border=PAD, fill=(255, 255, 255))
-    ascii_in = os.path.join(tmpp, f"p{pi:03d}.jpg")
-    padded.save(ascii_in, quality=95)
-    # 2. page-dewarp (-x 0)
-    subprocess.run([sys.executable, "-m", "page_dewarp", "-x", "0", "-o", tmpp, ascii_in],
-                   capture_output=True, text=True)
-    thresh = os.path.join(tmpp, f"p{pi:03d}_thresh.png")
-    if os.path.exists(thresh):
-        status = "dewarp"
-    else:
-        thresh = os.path.join(tmpp, f"p{pi:03d}_fallback.png")
-        _fallback_preprocess(ascii_in, thresh)
-        status = "fallback"
-    # 3. Tesseract
-    base = os.path.join(tmpp, f"p{pi:03d}_ocr")
-    subprocess.run([TESS, thresh, base, "-l", "dan+eng", "--psm", "3", "txt"],
-                   capture_output=True)
-    with open(base + ".txt", encoding="utf-8", errors="replace") as f:
-        text = f.read()
-    with open(os.path.join(pages_hq, f"{pi:03d}.txt"), "w", encoding="utf-8") as f:
-        f.write(text)
-    return pi, status
-
-
-def run_ocr(cfg, workers=4):
-    """Kør HQ-OCR på alle splittede sider -> pages_hq/NNN.txt."""
-    tmpp = os.path.join(os.environ.get("TEMP", "."), "hq_ocr_" + os.path.basename(cfg.output_dir))
-    os.makedirs(cfg.pages_dir, exist_ok=True)
-    os.makedirs(tmpp, exist_ok=True)
-    files = sorted(glob.glob(os.path.join(cfg.tmp_dir, "*.jpg")))
-    tasks = [(i, f, tmpp, cfg.pages_dir) for i, f in enumerate(files)]
-    print(f"[{cfg.name}] HQ-OCR af {len(tasks)} sider med {workers} workers...")
+    layout = "2" if cfg.split_spreads else "1"
+    cmd = [SCANTAILOR, f"--layout={layout}", "--deskew=auto", "--dewarping=auto",
+           "--content-detection=normal", "--color-mode=color_grayscale",
+           "--despeckle=normal", "--start-filter=1", "--end-filter=6"] + imgs + [st_out]
+    print(f"[{cfg.name}] ScanTailor: {len(imgs)} fotos -> split+deskew+dewarp "
+          f"(grayscale, kan tage nogle minutter)...")
     t0 = time.time()
-    done = fb = 0
-    with ProcessPoolExecutor(max_workers=workers) as ex:
-        for pi, status in ex.map(_process_page, tasks):
-            done += 1
-            fb += status == "fallback"
-            if done % 20 == 0 or done == len(tasks):
-                print(f"  {done}/{len(tasks)} sider ({time.time()-t0:.0f}s, {fb} fallback)")
-    print(f"[{cfg.name}] Færdig: {done} sider, {fb} fallback, {time.time()-t0:.0f}s")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    tifs = sorted(glob.glob(os.path.join(st_out, "*.tif")))
+    print(f"  {len(tifs)} sider produceret ({time.time()-t0:.0f}s)")
+    if not tifs:
+        print("  STDERR:", (proc.stderr or "")[-800:])
+    return tifs
+
+
+def _whitepoint(im, wp=WHITE_PT):
+    """Klip baggrund/gennemslag: pixels lysere end wp -> hvid, resten strækkes."""
+    lut = [min(255, int(i * 255 / wp)) if i < wp else 255 for i in range(256)]
+    return im.convert("L").point(lut)
+
+
+def _page_text(reader, tif):
+    """OCR én side: whitepoint-klip -> EasyOCR paragraph -> afsnit sorteret
+    top->bund, ét afsnit pr. linje (bevarer §-bokse som droppbare blokke)."""
+    import numpy as np
+    img = np.array(_whitepoint(Image.open(tif)).convert("RGB"))
+    res = reader.readtext(img, detail=1, paragraph=True)
+    paras = sorted(res, key=lambda z: min(p[1] for p in z[0]))
+    return "\n".join(txt for _box, txt in paras)
+
+
+def run_ocr(cfg, workers=None):
+    """ScanTailor -> whitepoint -> EasyOCR -> pages_hq/NNN.txt for hele bogen."""
+    tifs = run_scantailor(cfg)
+    if not tifs:
+        print("Ingen sider fra ScanTailor — afbryder.")
+        return
+    os.makedirs(cfg.pages_dir, exist_ok=True)
+
+    import easyocr
+    print(f"[{cfg.name}] Indlæser EasyOCR (da+en, CPU)...")
+    reader = easyocr.Reader(["da", "en"], gpu=False, verbose=False)
+    print(f"[{cfg.name}] EasyOCR af {len(tifs)} sider (~40 s/side)...")
+    t0 = time.time()
+    for i, tif in enumerate(tifs):
+        text = _page_text(reader, tif)
+        with open(os.path.join(cfg.pages_dir, f"{i:03d}.txt"), "w", encoding="utf-8") as f:
+            f.write(text)
+        if (i + 1) % 10 == 0 or i + 1 == len(tifs):
+            el = time.time() - t0
+            eta = el / (i + 1) * (len(tifs) - i - 1)
+            print(f"  {i+1}/{len(tifs)} sider ({el:.0f}s, ETA {eta:.0f}s)")
+    print(f"[{cfg.name}] Færdig: {len(tifs)} sider -> {cfg.pages_dir}")

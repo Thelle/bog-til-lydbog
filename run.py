@@ -35,12 +35,7 @@ def main():
     cfg = load_book(book)
 
     if cmd == "ocr":
-        if cfg.split_spreads:
-            existing = os.path.join(cfg.tmp_dir)
-            import glob
-            if not glob.glob(os.path.join(existing, "*.jpg")):
-                ocr.split_spreads(cfg)
-        ocr.run_ocr(cfg)
+        ocr.run_ocr(cfg)   # ScanTailor + hvidpunkt + EasyOCR -> pages_hq
         return
 
     pages, known, chs = chapters.prepare(cfg)
