@@ -25,6 +25,43 @@ def normalize_easyocr(text):
     return text
 
 
+def _dehyphenate(text, known):
+    """Saml orddeling ved linjeskift, som EasyOCR gengiver med ' - '/'- ' INDE i
+    en linje ('hvor for - skellige' -> 'forskellige', 'ejerens be- gæring' ->
+    'begæring'). Ordbogs-styret: sammensæt kun hvis resultatet er et rigtigt ord,
+    så ægte bindestreger bevares ('by- og landreglerne', 'ordlyds- og formåls-',
+    'III-reglerne' som ikke har mellemrum røres slet ikke)."""
+    def repl(m):
+        joined = m.group(1) + m.group(2)
+        return joined if is_real_word(joined.lower(), known) else m.group(0)
+    return re.sub(r"(\w{2,})\s*-\s+([a-zæøåäöéü]\w+)", repl, text)
+
+
+def _is_strip_fragment(s, known):
+    """Kort fragment fra nabosidens kant (ScanTailor-split efterlod en smal
+    strimmel) eller fra en scramblet region. Signatur: mange AFKORTEDE ikke-ord
+    ('kommun', 'bogsecei', 'fremgil', 'ståelse') eller udelukkende meget korte
+    ord uden ét indholdsord ('skab for hvor den sel i over'). Rører kun korte
+    linjer, så rigtige overskrifter ('Fortolkning af servitutaftaler') bevares."""
+    if not has_dictionary(known):
+        return False
+    toks = s.split()
+    if len(toks) < 4:
+        return False
+    words = [w for w in (re.sub(r"[^a-zA-ZæøåÆØÅ]", "", t).lower() for t in toks) if w]
+    longw = [w for w in words if len(w) >= 4]
+    # a) mange afkortede ikke-ord ('kommun', 'bogsecei', 'fremgil'). Rigtige afsnit
+    #    ligger <=16% junk (målt), garbage 40%+, så 40% rammer kun støj.
+    if len(longw) >= 3:
+        junk = sum(1 for w in longw if not is_real_word(w, known))
+        if junk / len(longw) >= 0.40:
+            return True
+    # b) kun bittesmå ord uden ét indholdsord ('skab for hvor den sel i over')
+    if len(toks) >= 5 and words and all(len(w) <= 4 for w in words):
+        return True
+    return False
+
+
 def _is_statute_box(s):
     """Grå §-citatboks (fuld lovtekst) — bruger ikke i lyd/tekst. EasyOCR holder
     dem som blokke der starter med '§ NN.' eller 'Stk. N.'. Inline-henvisninger
@@ -237,6 +274,8 @@ def clean_for_tts(text, known=frozenset()):
             continue
         if _is_nonword_line(s, known):                 # 'tdi eta lla eh' (ordbog)
             continue
+        if _is_strip_fragment(s, known):               # nabosidens kant-strimmel
+            continue
         if is_garbage(s):
             continue
         if _is_footnote(s):
@@ -256,4 +295,5 @@ def clean_for_tts(text, known=frozenset()):
             reflowed[-1] += " " + ln
         else:
             reflowed.append(ln)
-    return "\n".join(reflowed).strip()
+    result = "\n".join(reflowed).strip()
+    return _dehyphenate(result, known)                 # saml ' - '-orddeling inde i linjer

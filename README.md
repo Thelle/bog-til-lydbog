@@ -61,6 +61,7 @@ Sideopdeling/dewarp laver ScanTailor.
 # 3. Kør:
 python run.py ocr    servitutretten_evald      # split + OCR -> pages_hq/  (langsomt)
 python run.py detect servitutretten_evald      # kontrollér kapitel-opdelingen
+python run.py qc     servitutretten_evald 15   # ranger de 15 mest mistænkelige lyd-sider
 python run.py txt    servitutretten_evald      # skriv renset tekst (hurtigt, ingen MP3)
 python run.py all    servitutretten_evald      # tekst + MP3 for alle kapitler
 ```
@@ -96,10 +97,22 @@ læserækkefølge. Resultat: `pages_hq/000.txt`, `001.txt`, … Rører ingen sø
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
 `detect` igen indtil opdelingen ser rigtig ud.
 
-### 4. Tekst og lyd  ·  `python run.py txt <bog>` / `all <bog>`
+### 4. Kvalitetstjek  ·  `python run.py qc <bog> [N]`
+Ranger de N mest mistænkelige **lyd-sider** (0 = ren, 1 = slem) ud fra fire
+billige signaler: ordbogs-junk, gennemsnitlig ordkvalitet, fragment-andel og
+tæthed af ' - '-dryp. Sider uden for `body_end`/kapitler (register, indhold)
+tælles ikke med. Formålet er feedback-loopet **ocr → qc → læs de værste → ret
+roden**: heuristikken kan ikke selv *forstå* teksten, men den peger på de sider
+en menneske-/LLM-læsning skal fokusere på. To typiske fund: (1) få
+near-total-loss-sider (OCR svigtede helt → re-OCR); (2) scramblede toppe/bunde
+(løbende headere, fodnoter, dryppende linjer nær falsen).
+
+### 5. Tekst og lyd  ·  `python run.py txt <bog>` / `all <bog>`
 `txt` skriver kun renset tekst (hurtigt — brug det til at inspicere kvaliteten).
 `all` skriver tekst **og** genererer MP3 pr. kapitel. `sample <bog> <nr>` laver
-ét enkelt kapitel med lyd.
+ét enkelt kapitel med lyd. Udtale-hints (`[[tts_pronounce]]` i config) bruges
+**kun** til MP3 — fx `vejret` -> `vej-ret` så oplæsningen betyder "ret til en
+vej", ikke vejr-fænomenet; tekstfilen forbliver korrekt dansk.
 
 ---
 
@@ -214,9 +227,10 @@ bog-til-lydbog/
   README.md              # denne kogebog
   bookpipe/
     ocr.py               # ScanTailor (grayscale) + hvidpunkt + EasyOCR -> pages_hq/
-    clean.py             # al tekstrensning + reflow (+ §-boks-drop, EasyOCR-normalisering)
+    clean.py             # tekstrensning + reflow (§-boks-drop, de-hyphenering, strip-filter)
     dictionary.py        # wordfreq + korpus-ordbog (volapyk-filter)
-    chapters.py          # detektion, opdeling, skrivning af tekst/MP3
+    chapters.py          # detektion, opdeling, skrivning af tekst/MP3 (+ udtale-hints)
+    qc.py                # kvalitetstjek: ranger mistænkelige sider (feedback-loop)
     tts.py               # edge-tts med retry
     config.py            # indlæs per-bog .toml
   books/

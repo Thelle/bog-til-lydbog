@@ -18,6 +18,15 @@ from .dictionary import build_known
 from .tts import synth
 
 
+def _apply_pronounce(text, rules):
+    """Regex-substitutioner der KUN bruges til oplæsning (fx udtale-hints), så
+    den gemte tekstfil forbliver korrekt. Fx 'vejret' -> 'vej-ret' så TTS siger
+    en ret til en vej og ikke vejr-fænomenet."""
+    for r in rules:
+        text = re.sub(r["pattern"], r["repl"], text)
+    return text
+
+
 def load_pages(cfg):
     pages = []
     for f in sorted(glob.glob(os.path.join(cfg.pages_dir, "*.txt"))):
@@ -82,7 +91,8 @@ def write_chapter(cfg, num, title, body, known):
     os.makedirs(cfg.mp3_dir, exist_ok=True)
     txt_path, n = write_text(cfg, num, title, body, known)
     mp3_path = os.path.join(cfg.mp3_dir, f"Kapitel_{num:02d}_{safe_name(title)}.mp3")
-    synth(open(txt_path, encoding="utf-8").read(), mp3_path, cfg.voice)
+    spoken = _apply_pronounce(open(txt_path, encoding="utf-8").read(), cfg.tts_pronounce)
+    synth(spoken, mp3_path, cfg.voice)
     return txt_path, mp3_path, n
 
 

@@ -12,6 +12,16 @@ detect = "manual"
 # Brødtekst slutter side 240; 241+ = domsregister/forkortelser/stikord.
 body_end = 241
 
+# Udtale-hints — KUN til MP3 (tekstfilen forbliver korrekt dansk). "vejret" er en
+# ret til en vej og skal udtales "vej-ret", ikke som vejr-fænomenet. \b-prefix
+# fanger hele familien: vejret, vejretten, vejrettens, vejrettigheder, ...
+[[tts_pronounce]]
+pattern = '\bvejret'
+repl = 'vej-ret'
+[[tts_pronounce]]
+pattern = '\bVejret'
+repl = 'Vej-ret'
+
 [[chapters]]
 num = 0
 page = 5

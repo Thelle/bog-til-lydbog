@@ -23,6 +23,7 @@ class BookConfig:
     body_end: int | None = None            # sidste brødtekstside+1 (klip register væk)
     chapters: list = field(default_factory=list)   # manual: [{num, page, title}, ...]
     titles: dict = field(default_factory=dict)     # kapitel: {nr: titel}
+    tts_pronounce: list = field(default_factory=list)  # [{pattern, repl}, ...] kun MP3
 
     @property
     def pages_dir(self):
@@ -56,4 +57,5 @@ def load(path):
         body_end=data.get("body_end"),
         chapters=data.get("chapters", []),
         titles=titles,
+        tts_pronounce=data.get("tts_pronounce", []),
     )

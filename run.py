@@ -3,6 +3,7 @@ CLI til bog-til-lydbog pipelinen.
 
   python run.py ocr    <bog>          # split dobbeltopslag + HQ-OCR -> pages_hq/
   python run.py detect <bog>          # vis kapitel-opdeling (kontrollér grænser)
+  python run.py qc     <bog> [N]      # ranger de N mest mistænkelige lyd-sider
   python run.py txt    <bog> [nr]     # skriv renset tekst (alle kapitler, eller ét)
   python run.py sample <bog> <nr>     # tekst + MP3 for ét kapitel
   python run.py all    <bog>          # tekst + MP3 for alle kapitler
@@ -15,7 +16,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8")  # undgå cp1252-fejl på Windows-konsol
 
-from bookpipe import config, ocr, chapters
+from bookpipe import config, ocr, chapters, qc as qcmod
 
 BOOKS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "books")
 
@@ -39,6 +40,18 @@ def main():
         return
 
     pages, known, chs = chapters.prepare(cfg)
+
+    if cmd == "qc":
+        top = int(sys.argv[3]) if len(sys.argv) > 3 else 20
+        in_audio = {i for _n, _t, sp, ep, _b in chs for i in range(sp, ep)}
+        ranked = qcmod.rank_pages(pages, known, top=top, include=in_audio)
+        print(f"[{cfg.name}] {top} mest mistænkelige sider (score 0=ren, 1=slem):\n")
+        for s, i, parts, text in ranked:
+            print(f"  s{i:03d}  score={s:.2f}  "
+                  f"junk={parts['junk']:.0%} wq={parts['wq']:.2f} "
+                  f"frag={parts['frag']:.0%} split={parts['split']:.2f}")
+            print(f"        {qcmod.snippet(text)}")
+        return
 
     if cmd == "detect":
         print(f"[{cfg.name}] fundet {len(chs)} kapitler (body_end={cfg.body_end}):\n")
