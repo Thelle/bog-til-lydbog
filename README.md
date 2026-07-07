@@ -93,6 +93,38 @@ læserækkefølge. Resultat: `pages_hq/000.txt`, `001.txt`, … Rører ingen sø
 > deskewer/dewarper hver side. Sæt `split_spreads = false` i config for bøger
 > fotograferet én side ad gangen (ScanTailor layout=1).
 
+### 2b. Alternativ OCR: PaddleOCR (en mulig fremgangsmåde)
+EasyOCR's paragraph-mode **scrambler læserækkefølgen** på stærkt krumme fotos
+(højre ende af en linje falder ned i næste linje → "vejrettens oprin -
+kerakteofra"). Ingen ordbog/heuristik kan rette rækkefølge-fejl. **PaddleOCR
+(PP-OCRv6, `lang="da"`) løser det ved roden**: korrekt rækkefølge + korrekt æøå
++ verbatim (ikke generativ → ingen hallucination). Det er mere opsætning, men
+kan være vejen når EasyOCR-resultatet svinger. Fremgangsmåden vi brugte til
+begge nuværende bøger:
+
+1. **Separat venv** (paddlepaddle har ingen wheels til Python 3.14): lav et
+   Python 3.12-venv med `uv` og installér `paddlepaddle==3.2.2 paddleocr==3.7.0`
+   (`numpy>=2,<3`). Vigtigt: **paddle 3.2.2** — 3.3.1 har en oneDNN/PIR-bug der
+   gør CPU-inferens ~50x langsommere; 3.0.0 kan ikke loade v6-modellerne.
+2. **OCR** (`bookpipe/paddle_ocr.py`, køres i det venv) er env-konfigurerbar.
+   "Config B" (komplet — det vi endte med):
+   `OCR_DEWARP=off OCR_UNWARP=1 OCR_MKLDNN=1 OCR_LIMIT=3000
+   OCR_PAGES_SUBDIR=pages_hq_B`. Pointe: lad *kun* PaddleOCR udrette
+   (`use_doc_unwarping`), ikke ScanTailor — dobbelt-udretning taber linjer.
+3. **Merge** (`bookpipe/merge_ocr.py`, normal 3.14): PaddleOCR's detektion har
+   ~95-99% recall, ikke 100%, og *hvilke* linjer den taber afhænger af
+   forbehandling. Kør evt. en "Config A" (dewarp=on, unwarp=off → `pages_hq`)
+   som fallback og flet på side-niveau: B primær (komplet krop), A hvor B fejlede.
+4. **To tekstversioner:** `BOOKPIPE_KEEP_FOOTNOTES=1` +
+   `BOOKPIPE_TXT_SUBDIR=tekst_med_fodnoter` giver en "med fodnoter"-kopi;
+   standard fjerner fodnoter (til MP3). `BOOKPIPE_PAGES_SUBDIR` vælger kilde-mappe.
+
+Dette trin erstatter `run.py ocr` ovenfor; resten (detect/txt/all) kører
+uændret på `pages_hq/`. Bemærk også: hvis en bogs VERSAL-"KAPITEL N"-openere er
+garblede, kan `detect="kapitel"` folde kapitler sammen — sæt da manuelle
+kapitel-grænser i config'en (se `books/servitutretten_evald.toml`, hvor Kap 9/11
+er sat manuelt af netop den grund).
+
 ### 3. Find kapitelgrænser  ·  `python run.py detect <bog>`
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
 `detect` igen indtil opdelingen ser rigtig ud.

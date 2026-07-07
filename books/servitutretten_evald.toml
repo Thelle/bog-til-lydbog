@@ -5,22 +5,72 @@ source_glob = "*.JPG"
 split_spreads = true
 voice = "da-DK-JeppeNeural"
 
-# Kapitler detekteres via VERSAL "KAPITEL N" i sideteksten; titler herunder.
-detect = "kapitel"
+# Manuelle kapitel-grænser (page = sideindeks i sorteret pages_hq/).
+# Sat manuelt i stedet for detect="kapitel", fordi VERSAL-openerne "KAPITEL 9"
+# og "KAPITEL 11" er garblede i OCR'en — automatisk detektion ville ellers
+# folde Kap 9 ind i Kap 8 og Kap 11 ind i Kap 10. Positionerne er stabile
+# (samme fotos -> samme ScanTailor-split -> samme siderækkefølge ved re-OCR).
+detect = "manual"
 
 # Brødtekst slutter side 266; 267+ = litteratur/lov-/doms-/stikordsregister.
 body_end = 267
 
-[titles]
-1 = "Om servitutretten"
-2 = "Hovedtræk af servitutrettens udvikling"
-3 = "Privatretlige servitutter - Begreber, indhold og afgrænsninger"
-4 = "Privatretlige servitutter - Fortolkning og ugyldighed"
-5 = "Stiftelse af servitutter ved retshandel"
-6 = "Stiftelse af servitutter ved hævd"
-7 = "Privatretlige servitutter - Tinglysning"
-8 = "Privatretlig påtale og håndhævelse"
-9 = "Offentligretlig håndhævelse af privatretlige servitutter"
-10 = "Privatretlige servitutter - Fortolknings- og dispensationsret"
-11 = "Privatretlige servitutters ophør"
-12 = "Offentligretlige servitutter"
+[[chapters]]
+num = 1
+page = 11
+title = "Om servitutretten"
+
+[[chapters]]
+num = 2
+page = 25
+title = "Hovedtræk af servitutrettens udvikling"
+
+[[chapters]]
+num = 3
+page = 43
+title = "Privatretlige servitutter - Begreber, indhold og afgrænsninger"
+
+[[chapters]]
+num = 4
+page = 63
+title = "Privatretlige servitutter - Fortolkning og ugyldighed"
+
+[[chapters]]
+num = 5
+page = 91
+title = "Stiftelse af servitutter ved retshandel"
+
+[[chapters]]
+num = 6
+page = 109
+title = "Stiftelse af servitutter ved hævd"
+
+[[chapters]]
+num = 7
+page = 129
+title = "Privatretlige servitutter - Tinglysning"
+
+[[chapters]]
+num = 8
+page = 151
+title = "Privatretlig påtale og håndhævelse"
+
+[[chapters]]
+num = 9
+page = 176
+title = "Offentligretlig håndhævelse af privatretlige servitutter"
+
+[[chapters]]
+num = 10
+page = 199
+title = "Privatretlige servitutter - Fortolknings- og dispensationsret"
+
+[[chapters]]
+num = 11
+page = 216
+title = "Privatretlige servitutters ophør"
+
+[[chapters]]
+num = 12
+page = 249
+title = "Offentligretlige servitutter"
