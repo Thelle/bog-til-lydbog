@@ -27,11 +27,11 @@ class BookConfig:
 
     @property
     def pages_dir(self):
-        return os.path.join(self.output_dir, "pages_hq")
+        return os.path.join(self.output_dir, os.environ.get("BOOKPIPE_PAGES_SUBDIR", "pages_hq"))
 
     @property
     def txt_dir(self):
-        return os.path.join(self.output_dir, "tekst")
+        return os.path.join(self.output_dir, os.environ.get("BOOKPIPE_TXT_SUBDIR", "tekst"))
 
     @property
     def mp3_dir(self):

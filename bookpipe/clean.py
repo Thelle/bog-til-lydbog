@@ -177,8 +177,12 @@ def _is_running_header(line, seen_headers):
 
 
 def _is_footnote(line):
-    """Fodnoter: '1. Forordning om...', '6. Gadejorden rummede...'"""
-    return bool(re.match(r"^\d{1,2}\.\s+[A-ZÆØÅ]", line) and len(line) < 200)
+    """Fodnoter: '1. Forordning om...', '6. Gadejorden rummede...', eller
+    fodnote-markør alene på linjen ('9.', Evald-stil). Ikke sektionsnr ('3.2')."""
+    s = line.strip()
+    if re.fullmatch(r"\d{1,3}\.", s):                  # 'N.' alene (markør)
+        return True
+    return bool(re.match(r"^\d{1,3}\.\s+[A-ZÆØÅa-zæøå]", s) and not re.match(r"^\d+\.\d", s))
 
 
 def _has_heavy_corruption(line):
@@ -240,8 +244,9 @@ def _is_nonword_line(s, known):
     return not any(is_real_word(t, known) for t in toks)
 
 
-def clean_for_tts(text, known=frozenset()):
-    """Orkestrér al rensning + reflow. `known` er korpus-ordbogen (build_known)."""
+def clean_for_tts(text, known=frozenset(), keep_footnotes=False):
+    """Orkestrér al rensning + reflow. `known` er korpus-ordbogen (build_known).
+    keep_footnotes=True bevarer fodnoter (til 'med fodnoter'-tekstversionen)."""
     text = normalize_easyocr(text)
     seen_headers = set()
     out = []
@@ -274,15 +279,14 @@ def clean_for_tts(text, known=frozenset()):
             continue
         if _is_nonword_line(s, known):                 # 'tdi eta lla eh' (ordbog)
             continue
-        if _is_strip_fragment(s, known):               # nabosidens kant-strimmel
-            continue
+        # _is_strip_fragment fjernet: PaddleOCR fjerner nabosidens strimmel ved
+        # kilden (box-position i paddle_ocr.py); tekst-filteret gav falske positiver
+        # på lange danske sammensatte ord ('vintervedligeholdelses- og renholdelses...')
         if is_garbage(s):
-            continue
-        if _is_footnote(s):
             continue
         if _has_heavy_corruption(s):
             continue
-        out.append(s)
+        out.append(s)                                  # fodnoter droppes EFTER reflow
 
     joined = "\n".join(out)
     joined = re.sub(r"(\w)-\n(\w)", r"\1\2", joined)   # saml orddeling ved linjeskift
@@ -295,5 +299,7 @@ def clean_for_tts(text, known=frozenset()):
             reflowed[-1] += " " + ln
         else:
             reflowed.append(ln)
+    if not keep_footnotes:                             # drop hele fodnote-afsnit (nu samlet)
+        reflowed = [p for p in reflowed if not _is_footnote(p)]
     result = "\n".join(reflowed).strip()
     return _dehyphenate(result, known)                 # saml ' - '-orddeling inde i linjer

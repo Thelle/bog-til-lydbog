@@ -79,7 +79,7 @@ def safe_name(s):
 def write_text(cfg, num, title, body, known):
     """Skriv kun renset tekst (ingen MP3). Returnér (sti, tegn)."""
     os.makedirs(cfg.txt_dir, exist_ok=True)
-    cleaned = clean_for_tts(body, known)
+    cleaned = clean_for_tts(body, known, keep_footnotes=os.environ.get("BOOKPIPE_KEEP_FOOTNOTES", "") == "1")
     path = os.path.join(cfg.txt_dir, f"Kapitel_{num:02d}_{safe_name(title)}.txt")
     with open(path, "w", encoding="utf-8") as f:
         f.write(cleaned)
