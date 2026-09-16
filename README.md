@@ -125,6 +125,33 @@ garblede, kan `detect="kapitel"` folde kapitler sammen — sæt da manuelle
 kapitel-grænser i config'en (se `books/servitutretten_evald.toml`, hvor Kap 9/11
 er sat manuelt af netop den grund).
 
+### 2c. Nabostrimler: ydre projektion + fals-klip ved påvist grænse (B2c)
+ScanTailor-sider indeholder ofte nabotekst to steder: **yderkanten**
+(fotobaggrund/naboside) og **falsen** (søstersiden krummer ind i billedet).
+Falsstrimlen er den værste — den kan vælte hele sidens layout-læsning
+(målt: indholdsside hvor sidetallene blev læst som 36 løse tal-linjer og
+punktlinjerne forsvandt; efter klip: korrekt TOC med punktlinjer).
+Metoden der vandt på Vejjura-bogen (MistralOCR, 25 prøvesider):
+1. **Yderkant:** mørk-pixel-projektion udefra, klip max 8 %. Falsen røres aldrig
+   her — det fjerner ydre strimler uden nogensinde at ramme tekst (99,9 %
+   bevaret på prøvesættet).
+2. **Fals:** DocTR-orddetektion (`db_resnet50`, score ≥ 0,3 — 0,5 er for strengt
+   til svage strimler), klyng bokse, og klip KUN ved påviste smalle (<12 % af
+   bredden), frakoblede klynger fuldt inde i falsbåndet (15 %) + 15 px margin.
+   **Krydsnings-garde:** hvis én brødtekstboks krydser snitlinjen, droppes
+   fals-klippet på den side. 0 overtrædelser på 25 sider; eyeball bekræfter
+   intakte TOC-tal og brødtekst.
+3. **Dumpet alternativ:** blind beskæring til boks-union med faste caps klippede
+   ægte tekst (TOC-side 8698→3215 tegn, afklippede sidetal) — aldrig klip blindt.
+
+Målt effekt: ~6 % støjtegn fjernet (16/25 sider ramt, 100–500 tegn/side),
+samme 29 TOC-opslag før/efter men læsbar layout. Falsstrimler for svage til
+detektion overlever som reststøj.
+**Advarsel (Mistral):** nær-blanke sider hallucineres ikke-deterministisk
+(32–45k tegn på én blank side, forskelligt pr. kørsel). Spring sider med
+0 detektionsbokse over ved re-OCR — ellers risikerer et re-run at *introducere*
+hallucinationer på sider der er rene i dag.
+
 ### 3. Find kapitelgrænser  ·  `python run.py detect <bog>`
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
 `detect` igen indtil opdelingen ser rigtig ud.
@@ -217,6 +244,36 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   uden et rigtigt ord), så rigtige korte billedtekster/overskrifter bevares.
 - **PDF vs. TTS-tekst er adskilt.** En søgbar OCR-PDF kan laves med lettere
   behandling; denne pipeline er den langsommere, høj-kvalitets tekst til oplæsning.
+
+## Dumpede spor (læs før du genopfinder dem)
+
+1. **Blind union-beskæring med faste caps (B2b).** Beskær til DocTR-boksenes
+   union ± margin, max 12/14 %. Caps ramte på 18/20 sider og klippede ægte
+   tekst (TOC-side 8698→3215 tegn, afklippede sidetal på eyeball). Læring:
+   klip ALDRIG blindt — kun ved påvist strimlegrænse + krydsnings-garde
+   (se 2c). En garde der aldrig slår til er stadig værd at have: 0 ABORTs på
+   25 sider er selve sikkerhedsbeviset.
+2. **DocTR-detektion på opslag-niveau.** For svag recall på nedskalerede
+   dobbeltsider (en håndfuld bokse til to sider) — detektion skal køre pr.
+   side i fuld opløsning.
+3. **DocTR-score 0,5 til svage strimler.** Falsstrimlen på side 026 gav 0 bokse
+   ved 0,5, men 41 ordbokse ved 0,3 (ordstore, over hele søjlehøjden = ægte
+   tekst). Læring: tærsklen er recall-kritisk for svagt tryk — validér altid
+   på den svageste side, og kræv ≥2 bokse pr. klynge mod støj.
+4. **Overlap/tiling af opslag (spor A).** Afvist på data: strimlerne sidder i
+   falsen + yderkanten, så overlap fjerner dem ikke — det fordobler kun
+   OCR-regningen. Læring: bestem strimlens PLACERING med eyeball (tegn
+   snitlinjer på siden) før du vælger metode.
+5. **Paddle-detektion til split (B1).** Blokeret: paddle 3.3.1 har en
+   oneDNN/PIR-bug (`ConvertPirAttribute`, ~50x langsommere CPU) + manglende
+   libgomp. Læring: pin `paddle==3.2.2` (se 2b) og mål detektorens runtime på
+   ÉN side før batch.
+6. **Flowed usynlig tekst i søgbar PDF.** Hele sidens tekst i én
+   `insert_textbox` giver søgetræf på tilfældige steder — og når teksten
+   overstiger boksen (>~70 linjer v. 8 pt) skriver PyMuPDF INTET (returværdi
+   negativ, scriptet ignorerede den): 83/270 sider uden tekstlag. Læring:
+   tjek altid `insert_textbox`' returværdi, læg tekst pr. linje/ord på
+   detekterede bokse, og assert at ingen ikke-tomme sider har tomt lag.
 
 ## Kendte begrænsninger
 
