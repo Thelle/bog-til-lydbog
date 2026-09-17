@@ -173,6 +173,44 @@ near-total-loss-sider (OCR svigtede helt → re-OCR); (2) scramblede toppe/bunde
 **kun** til MP3 — fx `vejret` -> `vej-ret` så oplæsningen betyder "ret til en
 vej", ikke vejr-fænomenet; tekstfilen forbliver korrekt dansk.
 
+### 6. Søgbar PDF  ·  `python -m bookpipe.searchable_pdf <txtmappe> <jpgmappe> <ud.pdf>`
+
+Giver hvert foto et usynligt, søgbart tekstlag lagt **linjeforankret** på
+detekterede tekstlinjer (DocTR `db_resnet50`, score ≥ 0,3): OCR'ens ord
+fordeles brøkvist på linjeslots med ægte font-metrik, ét ord præcis ét sted
+(`render_mode=3`). Bagefter **skal** der verificeres uafhængigt:
+
+`python -m bookpipe.verify_pdf <pdf> <txtmappe> [--sample N]`
+
+ingen tomme lag for ikke-tomme kilder, alle ord søgbare, plus 5
+positionsprober (ordet skal ramme dér hvor det faktisk står — det fanger
+"tekst på tilfældige steder", jf. dumpet spor 6).
+
+Kontrakter og fælder (alle betalt med fund på Vejjura-bogen, 270 sider):
+- **Sanitize-paritet.** Laget kan kun holde latin-1; verifieren bruger SAMME
+  tegn-map som builderen (`SANITIZE` importeres fra `searchable_pdf`).
+  Ikke-latin-1 (fx CJK i en hallucinert datolinje) bliver `?` i begge —
+  verificer den sanitizerede form, ikke rå kildetekst.
+- **Frys txt-mappen før build.** En re-OCR overskrev en kilde midt i buildet;
+  resultatet var et lag bygget af en forældet version (117/132 ord på side
+  52) som kun verifieren fangede. Byg aldrig mens OCR skriver.
+- **Fallback der altid rummer alle ord.** Sider uden detektionsbokse
+  (overeksponerede fotos) stables med step skaleret efter ordantal — et fast
+  step klippede lydløst halen (sidste fodnote forsvandt). Regressionstest:
+  `python bookpipe/test_place_top.py`.
+- **Prober kalibreres pr. tekstversion.** Ny OCR bryder linjer anderledes, så
+  samme ord står et andet sted på siden. Vælg 5 særprægede ord, mål y som
+  andel af sidehøjden, sæt bånd med margin. Når en probe fejler: render siden
+  med røde søgebokse og eyeball først — på side 123 sad boksen præcis på
+  afsnittet; det var proben der var forældet, ikke PDF'en.
+- **Hastighed.** Kør verificering fra en `/tmp`-kopi af PDF'en og søg kun
+  unikke ord (minutter frem for time+ på Windows-mount). Gem den færdige PDF
+  uden `garbage`+`deflate` (sekunder frem for 20+ min CPU-rekomprimering)
+  og kopiér på plads bagefter.
+
+Målt (Vejjura): 270 sider — 261 linjeforankret, 5 fallback, 4 tomme (reelt
+blanke sider: tom kilde + tomt lag = OK). Fuld GRØN på alle sider.
+
 ---
 
 ## Tilføj en ny bog
@@ -274,6 +312,13 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
    negativ, scriptet ignorerede den): 83/270 sider uden tekstlag. Læring:
    tjek altid `insert_textbox`' returværdi, læg tekst pr. linje/ord på
    detekterede bokse, og assert at ingen ikke-tomme sider har tomt lag.
+7. **Fast-step fallback i søgbart lag.** `place_top` med fast 7 pt-step
+   stoppede ved sidebunden og tabte lydløst ~16 ord (Vejjura side 52:
+   sidste fodnote "11. Falk …" usøgbar) mens builderen rapporterede succes
+   — alle linjer var "behandlet", halen blev bare klippet af
+   stop-betingelsen. Læring: fallback skal garantere ALLE ord (skaleret
+   step efter ordantal) + uafhængig ord-for-ord-verificering bagefter, der
+   tæller søgbarhed, ikke indsættelser (se trin 6).
 
 ## Kendte begrænsninger
 
@@ -320,6 +365,9 @@ bog-til-lydbog/
     dictionary.py        # wordfreq + korpus-ordbog (volapyk-filter)
     chapters.py          # detektion, opdeling, skrivning af tekst/MP3 (+ udtale-hints)
     qc.py                # kvalitetstjek: ranger mistænkelige sider (feedback-loop)
+    searchable_pdf.py    # søgbar PDF: linjeforankret usynligt lag + fit-fallback
+    verify_pdf.py        # uafhængig verificering: tomme lag, ordsøgning, prober
+    test_place_top.py    # regressionstest: fallback rummer alle ord (ingen framework)
     tts.py               # edge-tts med retry
     config.py            # indlæs per-bog .toml
   books/

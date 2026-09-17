@@ -8,3 +8,6 @@ easyocr           # OCR (dansk+engelsk); henter sprogmodeller ved 1. kørsel
 edge-tts          # tekst -> MP3 (Microsoft neurale stemmer, gratis)
 wordfreq          # dansk ordliste til volapyk-filter
 Pillow            # billedindlæsning + hvidpunkt-klip (følger typisk med easyocr)
+pymupdf           # søgbar PDF: usynligt lag + verificering
+python-doctr      # linjedetektion til søgbart lag, db_resnet50 (testet: 1.1.0)
+numpy             # (følger typisk med doctr/easyocr)
