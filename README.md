@@ -221,6 +221,8 @@ Arkivér det færdige resultat som tidsstemplede snapshots
 sæt pr. kørsel, så historik aldrig overskrives og intet blandes
 sammen; nyeste timestamp = bedste. Opdateringsscriptet opretter kun nyt
 snapshot ved ændret indhold.
+Sættet dækker sidetekster, kapiteltekster, MP3 og PDF med
+søgelag.
 
 ---
 ## Tilføj en ny bog
