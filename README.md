@@ -173,46 +173,56 @@ near-total-loss-sider (OCR svigtede helt → re-OCR); (2) scramblede toppe/bunde
 **kun** til MP3 — fx `vejret` -> `vej-ret` så oplæsningen betyder "ret til en
 vej", ikke vejr-fænomenet; tekstfilen forbliver korrekt dansk.
 
-### 6. Søgbar PDF  ·  `python -m bookpipe.searchable_pdf <txtmappe> <jpgmappe> <ud.pdf>`
+### 6. Søgbar PDF · Tesseract-lag (kun til søgning)
 
-Giver hvert foto et usynligt, søgbart tekstlag lagt **linjeforankret** på
-detekterede tekstlinjer (DocTR `db_resnet50`, score ≥ 0,3): OCR'ens ord
-fordeles brøkvist på linjeslots med ægte font-metrik, ét ord præcis ét sted
-(`render_mode=3`). Bagefter **skal** der verificeres uafhængigt:
+Resten af pipelinen (OCR til txt, lydbog og PDF uden OCR-lag) røres ikke
+— **Tesseract bruges alene til søgelaget**, som ikke behøver være
+perfekt. Hvert sidebillede køres med Tesseract dansk (`-l dan`) til hOCR,
+og hvert ord lægges usynligt (`render_mode=3`) **i sin egen
+geometri-tro boks**: fontsize = bokshøjde x 0,85, skaleret ned hvis
+ordet er bredere end boksen. Ingen reflow, ingen mapping —
+søgeudpegningen sidder dér hvor ordet står på billedet.
 
-`python -m bookpipe.verify_pdf <pdf> <txtmappe> [--sample N]`
+Forudsætning: `tesseract` + dansk sprogdata (Ubuntu:
+`sudo apt install tesseract-ocr tesseract-ocr-dan`; Windows:
+Tesseract-installeren + `dan.traineddata` i tessdata).
 
-ingen tomme lag for ikke-tomme kilder, alle ord søgbare, plus 5
-positionsprober (ordet skal ramme dér hvor det faktisk står — det fanger
-"tekst på tilfældige steder", jf. dumpet spor 6).
+Fremgangsmåde (målt på Vejjura, 270 sider):
+1. **Prototype først:** byg 2-3 repræsentative sider, åbn PDF'en og
+   søg efter et særpræget ord (fx `byggelinje`) — udpegningen skal
+   sidde på selve ordet. Sammenlign med samme sider i den gamle PDF.
+2. **Fuld bygning til NYT filnavn** (overskriv aldrig) — ca. 2-3 s/side.
+3. **Verificér uafhængigt:** søgeprober med y-bånd (hittet skal ramme
+   dér hvor ordet faktisk står — fanger "stablede" ord på samme
+   linje), optælling af tomme lag (kun reelt blanke sider må være
+   tomme) og font-sundhed (ingen mikrofont i brødtekst).
 
-Kontrakter og fælder (alle betalt med fund på Vejjura-bogen, 270 sider):
-- **Sanitize-paritet.** Laget kan kun holde latin-1; verifieren bruger SAMME
-  tegn-map som builderen (`SANITIZE` importeres fra `searchable_pdf`).
-  Ikke-latin-1 (fx CJK i en hallucinert datolinje) bliver `?` i begge —
-  verificer den sanitizerede form, ikke rå kildetekst.
-- **Frys txt-mappen før build.** En re-OCR overskrev en kilde midt i buildet;
-  resultatet var et lag bygget af en forældet version (117/132 ord på side
-  52) som kun verifieren fangede. Byg aldrig mens OCR skriver.
-- **Fallback der altid rummer alle ord.** Sider uden detektionsbokse
-  (overeksponerede fotos) stables med step skaleret efter ordantal — et fast
-  step klippede lydløst halen (sidste fodnote forsvandt). Regressionstest:
-  `python bookpipe/test_place_top.py`.
-- **Prober kalibreres pr. tekstversion.** Ny OCR bryder linjer anderledes, så
-  samme ord står et andet sted på siden. Vælg 5 særprægede ord, mål y som
-  andel af sidehøjden, sæt bånd med margin. Når en probe fejler: render siden
-  med røde søgebokse og eyeball først — på side 123 sad boksen præcis på
-  afsnittet; det var proben der var forældet, ikke PDF'en.
-- **Hastighed.** Kør verificering fra en `/tmp`-kopi af PDF'en og søg kun
-  unikke ord (minutter frem for time+ på Windows-mount). Gem den færdige PDF
-  uden `garbage`+`deflate` (sekunder frem for 20+ min CPU-rekomprimering)
-  og kopiér på plads bagefter.
+Kontrakter og fælder:
+- **Støjfilter:** spring bokse under 8 kildepixels over (målt: støj
+  0-4 px, brødtekst 10 px+ på ~1400x2000-sider) — ellers ender
+  fragmenter som søgbare enkeltbogstaver.
+- **PSM-fallback med dansk-gate:** PSM 3-segmenteringen opgiver visse
+  krumme sider helt ("Empty page!!"). Ved tom side prøves `--psm 6`,
+  men resultatet lægges kun i laget hvis det ligner dansk (>= 20
+  stopord) — ellers gætter PSM 6 løs på figursider og forurener
+  søgningen. Regressionstest: `test_tesseract_layer.py` (7 tjek,
+  kræver ikke tesseract-binaren).
+- **Latin-1-sanitize** som før (samme tegn-map); uerstattelige tegn
+  bliver `?`. Tesseract læser selvstændigt, så enkelte ord kan stå
+  anderledes end i pipeline-teksten — laget er til søgning, ikke paritet.
+- Den ældre DocTR-mapping-vej (`bookpipe/searchable_pdf.py`) er
+  **forladt** til søgelag: se dumpede spor 6-8.
 
-Målt (Vejjura): 270 sider — 261 linjeforankret, 5 fallback, 4 tomme (reelt
-blanke sider: tom kilde + tomt lag = OK). Fuld GRØN på alle sider.
+Målt (Vejjura_OCR_TESS_B2c.pdf): 270 sider, ~89.800 søgbare ord,
+3 PSM-fallbacks, 7 tomme lag — alle forklarede (3 blanke, 2 figursider
+afvist som støj, 2 kun-sidetal).
+Arkivér det færdige resultat som tidsstemplede snapshots
+`<YYYY-MM-DD_HH-MM>_<kilde>` (fx `2026-09-17_10-34_pages_B2c_txt`) — ét
+sæt pr. kørsel, så historik aldrig overskrives og intet blandes
+sammen; nyeste timestamp = bedste. Opdateringsscriptet opretter kun nyt
+snapshot ved ændret indhold.
 
 ---
-
 ## Tilføj en ny bog
 
 Kopiér en `.toml` i `books/` og ret felterne:
@@ -282,6 +292,10 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   uden et rigtigt ord), så rigtige korte billedtekster/overskrifter bevares.
 - **PDF vs. TTS-tekst er adskilt.** En søgbar OCR-PDF kan laves med lettere
   behandling; denne pipeline er den langsommere, høj-kvalitets tekst til oplæsning.
+- **Søgelag med Tesseract-bokse, ikke mapping.** Søgning skal ramme
+  præcist (fx `byggelinje`), men laget behøver ikke matche
+  pipeline-teksten ordret — derfor læser Tesseract billederne
+  selvstændigt til hOCR i stedet for at fordele andres ord. Se trin 6.
 
 ## Dumpede spor (læs før du genopfinder dem)
 
@@ -319,6 +333,18 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
    stop-betingelsen. Læring: fallback skal garantere ALLE ord (skaleret
    step efter ordantal) + uafhængig ord-for-ord-verificering bagefter, der
    tæller søgbarhed, ikke indsættelser (se trin 6).
+8. **Brøkvis afsnits->slot-mapping (mikrofont + stabling).** Mistrals
+   linjer er afsnit, ikke visuelle linjer; brøkvis fordeling (linje i ->
+   slot round(i*(K-1)/(M-1))) stoppede hele afsnit ned i ÉN slot (målt
+   side 61: 28-ords afsnit, fontsize ned til 1,8 pt) og stablede ord på
+   samme linje (5 identiske y-hits) så søgeudpegningen sad ved siden
+   af ordet. Læring: læg aldrig afsnits-ord i linje-slots via
+   positionsbrøk — brug geometri-tro bokse (trin 6).
+9. **Blind PSM 6-fallback i Tesseract-lag.** PSM 3 opgiver krumme sider
+   helt ("Empty page!!" — side 150 med 83 reelle ord), men `--psm 6`
+   gætter løs på figursider (94/276 ord fragment-støj på 052/112).
+   Læring: fallback kun med dansk-gate (>= 20 stopord: 150 giver 43,
+   figursider 9) — ellers forurenes søgningen med volapyk-hits.
 
 ## Kendte begrænsninger
 
