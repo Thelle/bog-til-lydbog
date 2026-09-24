@@ -232,11 +232,12 @@ Kontrakter og fælder:
 Målt (Vejjura_OCR_TESS_B2c.pdf): 270 sider, ~89.800 søgbare ord,
 3 PSM-fallbacks, 7 tomme lag — alle forklarede (3 blanke, 2 figursider
 afvist som støj, 2 kun-sidetal).
-Arkivér det færdige resultat som tidsstemplede snapshots
-`<YYYY-MM-DD_HH-MM>_<kilde>` (fx `2026-09-17_10-34_pages_B2c_txt`) — ét
-sæt pr. kørsel, så historik aldrig overskrives og intet blandes
-sammen; nyeste timestamp = bedste. Opdateringsscriptet opretter kun nyt
-snapshot ved ændret indhold.
+Arkivér det færdige resultat som tidsstemplede kopier i `Current best`:
+`<YYYY-MM-DD_HH-MM>_<kilde>` (fx `2026-09-17_10-34_pages_B2c_txt`),
+dateret ved kopieringstidspunktet. `Current best` rummer kun det bedste til
+dato — ét sæt pr. kilde; når en nyere kørsel vinder, slettes det gamle sæt.
+Historikken ligger i outputmapperne, ikke i `Current best`.
+Opdateringsscriptet opretter kun nyt snapshot ved ændret indhold.
 Sættet dækker sidetekster, kapiteltekster, MP3 og PDF med
 søgelag.
 
@@ -421,3 +422,17 @@ bog-til-lydbog/
 
 Output (`pages_hq/`, `tekst/`, `mp3/`) lægges i hver bogs `output_dir` —
 **uden for** repoet. ScanTailor/Tesseract-mellemfiler ligger i en temp-mappe.
+
+### Daterede mapper — aldrig generiske navne
+
+Outputmapperne i work-dir er historik og varianter (fx `tekst_B2c/`,
+`mp3_B2c/`) — de bliver liggende. `Current best` er en kopi af det bedste
+resultat til dato fra outputmapperne, så man kan se hvad der skal bruges:
+daterede sæt `<YYYY-MM-DD_HH-MM>_<kilde>`
+(fx `2026-09-24_13-54_tekst_B2c` = 24. sept. 2026 kl. 13.54), dateret ved
+kopieringstidspunktet — ét sæt pr. kilde; når en nyere kørsel vinder,
+slettes det gamle sæt. Generiske navne som `tekst_new` er forbudt: man kan
+ikke se hvad der er nyest, og næste kørsel overskriver/blander indholdet.
+Ingen løse filer i `Current best` (PDF undtaget: den er selv en dateret
+fil). Bemærk: `update_current_best.py` kopierer kun — taberen slettes
+manuelt.
