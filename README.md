@@ -36,22 +36,40 @@ Derfor angriber pipelinen dem ét for ét: **dewarp** (ScanTailor) mod krumning,
   Standardsti: `C:\Program Files\Scan Tailor\scantailor-cli.exe`.
 - Anden sti? Sæt miljøvariabel `SCANTAILOR_CLI`.
 
-**2. EasyOCR** (dansk + engelsk, via pip)
+**2. MistralOCR (hovedvejen)** — online OCR via API (`bookpipe/mistral_ocr.py`).
 
-- Installeres med `pip install -r requirements.txt`. Første kørsel henter
-  sprogmodellerne (kræver internet én gang).
-- Kører på CPU (~40 s/side). Slår Tesseract på **læserækkefølge** ved krumme
-  sider og holder §-citatbokse som separate blokke (se beslutninger nedenfor).
+- Kræver `MISTRAL_API_KEY` i `~/ocr_project/.env` (indlæses med `python-dotenv`;
+  nøglen logges aldrig, kun dens længde).
+- Pip-pakkerne `mistralai` og `python-dotenv` (i `requirements.txt`).
+- `MISTRAL_MAX_SIDE` (standard 2000) begrænser billedstørrelsen før upload.
+- Koster ét API-kald pr. side; eksisterende `.txt` springes over (resume).
+  Kræver internet.
 
-**3. Python 3.11+** (testet på 3.14 — `tomllib` er indbygget).
+**3. B2c-trim (DocTR, kører lokalt)** — `python -m bookpipe.gutter_trim`
+klipper nabostrimler før OCR (se afsnit 2c). Kræver `python-doctr`
+(db_resnet50-modellen hentes ved første kørsel) + `torch` (CPU er nok) +
+Pillow/numpy.
+
+**4. Python 3.11+** (testet på 3.14 — `tomllib` er indbygget).
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Pip-pakker: `easyocr` (OCR), `wordfreq` (dansk ordliste lokalt) og `edge-tts`
+Fælles pip-pakker: `wordfreq` (dansk ordliste til volapyk-filter) og `edge-tts`
 (Microsofts gratis online-stemme, kræver internet ved MP3-generering).
 Sideopdeling/dewarp laver ScanTailor.
+
+Bibemærkninger (ikke nødvendigt på hovedvejen):
+
+- **EasyOCR** (dansk + engelsk, `easyocr` i requirements) — kun til den gamle
+  EasyOCR-vej (trin 2). Første kørsel henter sprogmodellerne (internet én gang).
+  Kører på CPU (~40 s/side).
+- **PaddleOCR** — kun til 2b-bibemærkningen (separat Python 3.12-venv,
+  `paddle==3.2.2`, se 2b).
+- **Tesseract + dansk sprogdata** — kun til det søgbare PDF-lag (trin 6):
+  Ubuntu `sudo apt install tesseract-ocr tesseract-ocr-dan`; Windows:
+  Tesseract-installeren + `dan.traineddata` i tessdata.
 
 ---
 
