@@ -128,22 +128,16 @@ kerakteofra"). Ingen ordbog/heuristik kan rette rækkefølge-fejl. **PaddleOCR
 
 + verbatim (ikke generativ → ingen hallucination). Det er mere opsætning, men
   er vejen når OCR skal køre lokalt på en almindelig laptop. Fremgangsmåden:
-1. **Separat venv** (paddlepaddle har ingen wheels til Python 3.14): lav et
-   Python 3.12-venv med `uv` og installér `paddlepaddle==3.2.2 paddleocr==3.7.0`
-   (`numpy>=2,<3`). Vigtigt: **paddle 3.2.2** — 3.3.1 har en oneDNN/PIR-bug der
-   gør CPU-inferens ~50x langsommere; 3.0.0 kan ikke loade v6-modellerne.
-2. **OCR** (`bookpipe/paddle_ocr.py`, køres i det venv) er env-konfigurerbar.
-   "Config B" (komplet — det vi endte med):
+1. **Separat venv:** Python 3.12-venv med `uv`:
+   `paddlepaddle==3.2.2 paddleocr==3.7.0` (`numpy>=2,<3`) — 3.3.1 har en
+   oneDNN/PIR-bug (~50x langsommere CPU), 3.0.0 kan ikke loade v6-modellerne.
+2. **OCR** (`bookpipe/paddle_ocr.py`): "Config B"
    `OCR_DEWARP=off OCR_UNWARP=1 OCR_MKLDNN=1 OCR_LIMIT=3000
-   OCR_PAGES_SUBDIR=pages_hq_B`. Pointe: lad *kun* PaddleOCR udrette
-   (`use_doc_unwarping`), ikke ScanTailor — dobbelt-udretning taber linjer.
-3. **Merge** (`bookpipe/merge_ocr.py`, normal 3.14): PaddleOCR's detektion har
-   ~95-99% recall, ikke 100%, og *hvilke* linjer den taber afhænger af
-   forbehandling. Kør evt. en "Config A" (dewarp=on, unwarp=off → `pages_hq`)
-   som fallback og flet på side-niveau: B primær (komplet krop), A hvor B fejlede.
+   OCR_PAGES_SUBDIR=pages_hq_B` — lad *kun* PaddleOCR udrette, ikke ScanTailor.
+3. **Merge** (`bookpipe/merge_ocr.py`): flet Config B (primær, ~95-99% recall)
+   med Config A-fallback på side-niveau.
 4. **To tekstversioner:** `BOOKPIPE_KEEP_FOOTNOTES=1` +
-   `BOOKPIPE_TXT_SUBDIR=tekst_med_fodnoter` giver en "med fodnoter"-kopi;
-   standard fjerner fodnoter (til MP3). `BOOKPIPE_PAGES_SUBDIR` vælger kilde-mappe.
+   `BOOKPIPE_TXT_SUBDIR=tekst_med_fodnoter`; `BOOKPIPE_PAGES_SUBDIR` vælger kilde.
 
 Dette trin erstatter `run.py ocr` ovenfor; resten (detect/txt/all) kører
 uændret på `pages_hq/`. Bemærk også: hvis en bogs VERSAL-"KAPITEL N"-openere er
@@ -231,9 +225,7 @@ geometri-tro boks**: fontsize = bokshøjde x 0,85, skaleret ned hvis
 ordet er bredere end boksen. Ingen reflow, ingen mapping —
 søgeudpegningen sidder dér hvor ordet står på billedet.
 
-Forudsætning: `tesseract` + dansk sprogdata (Ubuntu:
-`sudo apt install tesseract-ocr tesseract-ocr-dan`; Windows:
-Tesseract-installeren + `dan.traineddata` i tessdata).
+Forudsætning: se Forudsætninger (Tesseract-bibemærkningen).
 
 Fremgangsmåde (målt på Vejjura, 270 sider):
 
@@ -248,31 +240,19 @@ Fremgangsmåde (målt på Vejjura, 270 sider):
 
 Kontrakter og fælder:
 
-- **Støjfilter:** spring bokse under 8 kildepixels over (målt: støj
-  0-4 px, brødtekst 10 px+ på ~1400x2000-sider) — ellers ender
+- **Støjfilter:** spring bokse under 8 kildepixels over — ellers ender
   fragmenter som søgbare enkeltbogstaver.
-- **PSM-fallback med dansk-gate:** PSM 3-segmenteringen opgiver visse
-  krumme sider helt ("Empty page!!"). Ved tom side prøves `--psm 6`,
-  men resultatet lægges kun i laget hvis det ligner dansk (>= 20
-  stopord) — ellers gætter PSM 6 løs på figursider og forurener
-  søgningen. Regressionstest: `test_tesseract_layer.py` (7 tjek,
-  kræver ikke tesseract-binaren).
-- **Latin-1-sanitize** som før (samme tegn-map); uerstattelige tegn
-  bliver `?`. Tesseract læser selvstændigt, så enkelte ord kan stå
-  anderledes end i pipeline-teksten — laget er til søgning, ikke paritet.
-- Den ældre DocTR-mapping-vej (`bookpipe/searchable_pdf.py`) er
-  **forladt** til søgelag: se dumpede spor 6-8.
+- **PSM-fallback med dansk-gate:** PSM 3 opgiver krumme sider ("Empty page!!")
+  — prøv `--psm 6`, men kun ved >= 20 stopord. Regressionstest:
+  `test_tesseract_layer.py`.
+- **Latin-1-sanitize** som før; Tesseract læser selvstændigt — laget er til
+  søgning, ikke paritet.
+- Den ældre DocTR-mapping-vej (`bookpipe/searchable_pdf.py`) er **forladt**
+  til søgelag (se `DUMPED_SPOR.md`).
 
-Målt (faktisk eksempel): 270 sider, ~89.800 søgbare ord,
-3 PSM-fallbacks, 7 tomme lag — alle forklarede (3 blanke, 2 figursider
-afvist som støj, 2 kun-sidetal).
-Arkivér det færdige resultat som tidsstemplede kopier i `Current best`:
-`<YYYY-MM-DD_HH-MM>_<kilde>` (fx `2026-09-17_10-34_pages_B2c_txt`),
-dateret ved kopieringstidspunktet. `Current best` rummer kun det bedste til
-dato — ét sæt pr. kilde; når en nyere kørsel vinder, slettes det gamle sæt.
-Historikken ligger i outputmapperne, ikke i `Current best`.
-Opdateringsscriptet opretter kun nyt snapshot ved ændret indhold.
-Sættet dækker sidetekster, kapiteltekster, MP3 og PDF med
+Målt: 270 sider, ~89.800 søgbare ord, 3 PSM-fallbacks, 7 forklarede tomme lag.
+Arkivér resultatet i `Current best` efter dateringsreglen under Filstruktur
+(Daterede mapper) — sættet dækker sidetekster, kapiteltekster, MP3 og PDF med
 søgelag.
 
 ---
@@ -328,12 +308,9 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   Et simpelt hvidpunkt-klip (lyst -> hvidt) fjerner det uden at røre den mørke tekst.
   Det tager kun gennemslag (bagside-gennemskin) — ikke nabostrimler fra den
   modstående side; dem fjerner kun B2c (afsnit 2c).
-- **EasyOCR slår Tesseract** — efter grayscale+hvidpunkt. Tesseracts rækkebaserede
-  layout-analyse flækker linjer hvis højresiden "drypper" nær ryggen
-  ("servitutforpligtet udfører" bliver til to stumper). EasyOCR detekterer
-  tekst-regioner enkeltvis og bevarer rækkefølgen. Dens svagheder (semikolon for
-  komma, mistede `» «`) er **stumme i oplæsning**. Pris: ~40 s/side mod ~0,7 s.
-  (§ læses som `$`, `og` som `0g`/`%g` — rettes i `clean.normalize_easyocr`.)
+- **EasyOCR slår Tesseract** (legacy-vej, trin 2): Tesseracts layout-analyse
+  flækker "dryppende" linjer; EasyOCR bevarer rækkefølgen. Fejllæsninger (§/$,
+  `og`) rettes i `clean.normalize_easyocr`.
 - **§-citatbokse droppes.** De grå, kursiverede lovtekst-bokse har lav kontrast og
   er svære at få i rækkefølge; de gengiver ordret lovtekst der også er dækket i
   brødteksten. EasyOCR holder dem som blokke der starter med "§ NN.", så
@@ -353,65 +330,14 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   pipeline-teksten ordret — derfor læser Tesseract billederne
   selvstændigt til hOCR i stedet for at fordele andres ord. Se trin 6.
 - **Modstående sider fjernes kun ved kilden (B2c) — aldrig med tekst-filtre.**
-  Haleklipperen `_strip_trailing_garbage_words` var skrevet til EasyOCR-tiden,
-  hvor nabostrimler efterlod støj-tokens i linjernes haler. På rene B2c-kilder
-  klippede den i stedet ægte haler af ("klippede haler") — derfor fjernet fra
-  `clean.py` (se 2d).
-- **`_is_strip_fragment` er ude af renseflowet.** Samme læring: når strimlen
-  fjernes ved kilden, giver tekst-filteret kun falske positiver. Funktionen
-  bruges stadig kun i `qc.py`s frag-signal.
-- **Ingen blind beskæring (B2b).** Beskæring til boks-union med faste caps
-  klippede ægte tekst — se dumpet spor 1. Klip kun ved påvist strimlegrænse
-  + krydsnings-garde (2c).
+  Haleklipperen er fjernet fra `clean.py` (klippede ægte haler: "klippede
+  haler"), `_is_strip_fragment` er ude af renseflowet (kun qc-signal), og blind
+  B2b-beskæring klippede ægte tekst (DUMPED_SPOR.md). Detaljer: 2c/2d.
 
-## Dumpede spor (læs før du genopfinder dem)
+## Dumpede spor
 
-1. **Blind union-beskæring med faste caps (B2b).** Beskær til DocTR-boksenes
-   union ± margin, max 12/14 %. Caps ramte på 18/20 sider og klippede ægte
-   tekst (TOC-side 8698→3215 tegn, afklippede sidetal på eyeball). Læring:
-   klip ALDRIG blindt — kun ved påvist strimlegrænse + krydsnings-garde
-   (se 2c). En garde der aldrig slår til er stadig værd at have: 0 ABORTs på
-   25 sider er selve sikkerhedsbeviset.
-2. **DocTR-detektion på opslag-niveau.** For svag recall på nedskalerede
-   dobbeltsider (en håndfuld bokse til to sider) — detektion skal køre pr.
-   side i fuld opløsning.
-3. **DocTR-score 0,5 til svage strimler.** Falsstrimlen på side 026 gav 0 bokse
-   ved 0,5, men 41 ordbokse ved 0,3 (ordstore, over hele søjlehøjden = ægte
-   tekst). Læring: tærsklen er recall-kritisk for svagt tryk — validér altid
-   på den svageste side, og kræv ≥2 bokse pr. klynge mod støj.
-4. **Overlap/tiling af opslag (spor A).** Afvist på data: strimlerne sidder i
-   falsen + yderkanten, så overlap fjerner dem ikke — det fordobler kun
-   OCR-regningen. Læring: bestem strimlens PLACERING med eyeball (tegn
-   snitlinjer på siden) før du vælger metode.
-5. **Paddle-detektion til split (B1).** Blokeret: paddle 3.3.1 har en
-   oneDNN/PIR-bug (`ConvertPirAttribute`, ~50x langsommere CPU) + manglende
-   libgomp. Læring: pin `paddle==3.2.2` (se 2b) og mål detektorens runtime på
-   ÉN side før batch.
-6. **Flowed usynlig tekst i søgbar PDF.** Hele sidens tekst i én
-   `insert_textbox` giver søgetræf på tilfældige steder — og når teksten
-   overstiger boksen (>~70 linjer v. 8 pt) skriver PyMuPDF INTET (returværdi
-   negativ, scriptet ignorerede den): 83/270 sider uden tekstlag. Læring:
-   tjek altid `insert_textbox`' returværdi, læg tekst pr. linje/ord på
-   detekterede bokse, og assert at ingen ikke-tomme sider har tomt lag.
-7. **Fast-step fallback i søgbart lag.** `place_top` med fast 7 pt-step
-   stoppede ved sidebunden og tabte lydløst ~16 ord (Vejjura side 52:
-   sidste fodnote "11. Falk …" usøgbar) mens builderen rapporterede succes
-   — alle linjer var "behandlet", halen blev bare klippet af
-   stop-betingelsen. Læring: fallback skal garantere ALLE ord (skaleret
-   step efter ordantal) + uafhængig ord-for-ord-verificering bagefter, der
-   tæller søgbarhed, ikke indsættelser (se trin 6).
-8. **Brøkvis afsnits->slot-mapping (mikrofont + stabling).** Mistrals
-   linjer er afsnit, ikke visuelle linjer; brøkvis fordeling (linje i ->
-   slot round(i*(K-1)/(M-1))) stoppede hele afsnit ned i ÉN slot (målt
-   side 61: 28-ords afsnit, fontsize ned til 1,8 pt) og stablede ord på
-   samme linje (5 identiske y-hits) så søgeudpegningen sad ved siden
-   af ordet. Læring: læg aldrig afsnits-ord i linje-slots via
-   positionsbrøk — brug geometri-tro bokse (trin 6).
-9. **Blind PSM 6-fallback i Tesseract-lag.** PSM 3 opgiver krumme sider
-   helt ("Empty page!!" — side 150 med 83 reelle ord), men `--psm 6`
-   gætter løs på figursider (94/276 ord fragment-støj på 052/112).
-   Læring: fallback kun med dansk-gate (>= 20 stopord: 150 giver 43,
-   figursider 9) — ellers forurenes søgningen med volapyk-hits.
+Flyttet til [DUMPED_SPOR.md](./DUMPED_SPOR.md) — læs den før du genopfinder
+en dumpet vej.
 
 ## Kendte begrænsninger
 
@@ -427,9 +353,8 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   suboptimal split/content-boks (fx figur- eller titelsider). Kør bogen gennem
   ScanTailor **GUI'en** og ret dem visuelt, hvis en side ser forkert ud, og OCR
   derefter output-billederne.
-- **Hastighed:** EasyOCR på CPU er ~40 s/side (≈3 t for en bog på ~250 sider).
-  Kør OCR-trinnet natten over. Har du et CUDA-GPU, kan `gpu=True` i `ocr.py`
-  sætte farten markant op.
+- **Hastighed (legacy-vej):** EasyOCR på CPU er ~40 s/side (≈3 t for en bog på
+  ~250 sider) — kør OCR-trinnet natten over, eller brug hovedvejen (2d).
 
 ---
 
