@@ -5,7 +5,7 @@ Pipelinen splitter dobbeltopslag, kører høj-kvalitets OCR med udretning af
 bogryggens krumning, renser teksten for OCR-støj og register/indeks, og
 genererer én MP3 pr. kapitel med Microsofts danske neurale stemme.
 
-Kogebog + kode så man ikke starter forfra hver gang der tages billeder af en bog.
+Kogebog + kode så man ikke starter forfra hver gang.
 
 ---
 
@@ -27,6 +27,7 @@ Derfor angriber pipelinen dem ét for ét: **dewarp** (ScanTailor) mod krumning,
 ## Forudsætninger
 
 **1. ScanTailor Advanced** (split + deskew + dewarp)
+
 - Det gennemtestede værktøj til efterbehandling af scannede bogsider. Klarer den
   indholds-bevidste sideopdeling, deskew og dewarp (bogryg-krumning) robust.
   Kører i **grayscale** (`color_grayscale`), ikke 1-bit — det bevarer diakritika
@@ -36,6 +37,7 @@ Derfor angriber pipelinen dem ét for ét: **dewarp** (ScanTailor) mod krumning,
 - Anden sti? Sæt miljøvariabel `SCANTAILOR_CLI`.
 
 **2. EasyOCR** (dansk + engelsk, via pip)
+
 - Installeres med `pip install -r requirements.txt`. Første kørsel henter
   sprogmodellerne (kræver internet én gang).
 - Kører på CPU (~40 s/side). Slår Tesseract på **læserækkefølge** ved krumme
@@ -73,12 +75,14 @@ python run.py all    servitutretten_evald      # tekst + MP3 for alle kapitler
 ## Workflow trin for trin
 
 ### 1. Fotografér
+
 - Ét **dobbeltopslag** (venstre + højre side) pr. foto, i rækkefølge.
 - Så fladt som muligt — pres bogen ned, undgå kraftig krumning ved ryggen.
 - Jævn belysning, skarpt fokus, hele opslaget i billedet med lidt margin.
 - Konsistent rækkefølge = siderne kommer i rigtig orden automatisk.
 
 ### 2. OCR  ·  `python run.py ocr <bog>`
+
 Tre trin: (1) **ScanTailor** (`--layout=2 --deskew=auto --dewarping=auto
 --color-mode=color_grayscale`) opdeler hvert opslag ved bogryggen, retter skævhed
 og krumning, og udsender grå-skala sidebilleder; (2) **hvidpunkt-klip** klipper
@@ -94,14 +98,15 @@ læserækkefølge. Resultat: `pages_hq/000.txt`, `001.txt`, … Rører ingen sø
 > fotograferet én side ad gangen (ScanTailor layout=1).
 
 ### 2b. Alternativ OCR: PaddleOCR (en mulig fremgangsmåde)
+
 EasyOCR's paragraph-mode **scrambler læserækkefølgen** på stærkt krumme fotos
 (højre ende af en linje falder ned i næste linje → "vejrettens oprin -
 kerakteofra"). Ingen ordbog/heuristik kan rette rækkefølge-fejl. **PaddleOCR
 (PP-OCRv6, `lang="da"`) løser det ved roden**: korrekt rækkefølge + korrekt æøå
-+ verbatim (ikke generativ → ingen hallucination). Det er mere opsætning, men
-kan være vejen når EasyOCR-resultatet svinger. Fremgangsmåden vi brugte til
-begge nuværende bøger:
 
++ verbatim (ikke generativ → ingen hallucination). Det er mere opsætning, men
+  kan være vejen når EasyOCR-resultatet svinger. Fremgangsmåden vi brugte til
+  begge nuværende bøger:
 1. **Separat venv** (paddlepaddle har ingen wheels til Python 3.14): lav et
    Python 3.12-venv med `uv` og installér `paddlepaddle==3.2.2 paddleocr==3.7.0`
    (`numpy>=2,<3`). Vigtigt: **paddle 3.2.2** — 3.3.1 har en oneDNN/PIR-bug der
@@ -126,12 +131,14 @@ kapitel-grænser i config'en (se `books/servitutretten_evald.toml`, hvor Kap 9/1
 er sat manuelt af netop den grund).
 
 ### 2c. Nabostrimler: ydre projektion + fals-klip ved påvist grænse (B2c)
+
 ScanTailor-sider indeholder ofte nabotekst to steder: **yderkanten**
 (fotobaggrund/naboside) og **falsen** (søstersiden krummer ind i billedet).
 Falsstrimlen er den værste — den kan vælte hele sidens layout-læsning
 (målt: indholdsside hvor sidetallene blev læst som 36 løse tal-linjer og
 punktlinjerne forsvandt; efter klip: korrekt TOC med punktlinjer).
 Metoden der vandt på Vejjura-bogen (MistralOCR, 25 prøvesider):
+
 1. **Yderkant:** mørk-pixel-projektion udefra, klip max 8 %. Falsen røres aldrig
    her — det fjerner ydre strimler uden nogensinde at ramme tekst (99,9 %
    bevaret på prøvesættet).
@@ -169,10 +176,12 @@ sideteksten direkte — kør ikke EasyOCR-tidens hale-rensning på den.
 Vejjura-bogens 12 B2c-kapiteltekster er verificeret uden afklippede haler.
 
 ### 3. Find kapitelgrænser  ·  `python run.py detect <bog>`
+
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
 `detect` igen indtil opdelingen ser rigtig ud.
 
 ### 4. Kvalitetstjek  ·  `python run.py qc <bog> [N]`
+
 Ranger de N mest mistænkelige **lyd-sider** (0 = ren, 1 = slem) ud fra fire
 billige signaler: ordbogs-junk, gennemsnitlig ordkvalitet, fragment-andel og
 tæthed af ' - '-dryp. Sider uden for `body_end`/kapitler (register, indhold)
@@ -183,6 +192,7 @@ near-total-loss-sider (OCR svigtede helt → re-OCR); (2) scramblede toppe/bunde
 (løbende headere, fodnoter, dryppende linjer nær falsen).
 
 ### 5. Tekst og lyd  ·  `python run.py txt <bog>` / `all <bog>`
+
 `txt` skriver kun renset tekst (hurtigt — brug det til at inspicere kvaliteten).
 `all` skriver tekst **og** genererer MP3 pr. kapitel. `sample <bog> <nr>` laver
 ét enkelt kapitel med lyd. Udtale-hints (`[[tts_pronounce]]` i config) bruges
@@ -204,6 +214,7 @@ Forudsætning: `tesseract` + dansk sprogdata (Ubuntu:
 Tesseract-installeren + `dan.traineddata` i tessdata).
 
 Fremgangsmåde (målt på Vejjura, 270 sider):
+
 1. **Prototype først:** byg 2-3 repræsentative sider, åbn PDF'en og
    søg efter et særpræget ord (fx `byggelinje`) — udpegningen skal
    sidde på selve ordet. Sammenlign med samme sider i den gamle PDF.
@@ -214,6 +225,7 @@ Fremgangsmåde (målt på Vejjura, 270 sider):
    tomme) og font-sundhed (ingen mikrofont i brødtekst).
 
 Kontrakter og fælder:
+
 - **Støjfilter:** spring bokse under 8 kildepixels over (målt: støj
   0-4 px, brødtekst 10 px+ på ~1400x2000-sider) — ellers ender
   fragmenter som søgbare enkeltbogstaver.
@@ -229,7 +241,7 @@ Kontrakter og fælder:
 - Den ældre DocTR-mapping-vej (`bookpipe/searchable_pdf.py`) er
   **forladt** til søgelag: se dumpede spor 6-8.
 
-Målt (Vejjura_OCR_TESS_B2c.pdf): 270 sider, ~89.800 søgbare ord,
+Målt (faktisk eksempel): 270 sider, ~89.800 søgbare ord,
 3 PSM-fallbacks, 7 tomme lag — alle forklarede (3 blanke, 2 figursider
 afvist som støj, 2 kun-sidetal).
 Arkivér det færdige resultat som tidsstemplede kopier i `Current best`:
@@ -242,22 +254,23 @@ Sættet dækker sidetekster, kapiteltekster, MP3 og PDF med
 søgelag.
 
 ---
+
 ## Tilføj en ny bog
 
 Kopiér en `.toml` i `books/` og ret felterne:
 
-| Felt | Betydning |
-|---|---|
-| `name` | Vises i output. |
-| `output_dir` | Hvor `pages_hq/`, `tekst/`, `mp3/` lægges. Brug **enkelt-quotes** (literal sti, så `\` ikke tolkes). |
-| `source_photos` | Mappe med dobbeltopslag-fotos. |
-| `source_glob` | Filmønster, fx `"*.JPG"`. |
-| `split_spreads` | `true` hvis fotos er dobbeltopslag (næsten altid). |
-| `voice` | edge-tts stemme, standard `da-DK-JeppeNeural`. |
-| `detect` | `"manual"` (grænser i config) eller `"kapitel"` (find "KAPITEL N"). |
-| `body_end` | Sidste brødtekstside + 1. Klipper register/indeks væk. |
-| `[[chapters]]` | Kun ved `manual`: `num`, `page` (sideindeks), `title` pr. kapitel. |
-| `[titles]` | Kun ved `kapitel`: `nr = "titel"`. |
+| Felt            | Betydning                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| `name`          | Vises i output.                                                                                      |
+| `output_dir`    | Hvor `pages_hq/`, `tekst/`, `mp3/` lægges. Brug **enkelt-quotes** (literal sti, så `\` ikke tolkes). |
+| `source_photos` | Mappe med dobbeltopslag-fotos.                                                                       |
+| `source_glob`   | Filmønster, fx `"*.JPG"`.                                                                            |
+| `split_spreads` | `true` hvis fotos er dobbeltopslag (næsten altid).                                                   |
+| `voice`         | edge-tts stemme, standard `da-DK-JeppeNeural`.                                                       |
+| `detect`        | `"manual"` (grænser i config) eller `"kapitel"` (find "KAPITEL N").                                  |
+| `body_end`      | Sidste brødtekstside + 1. Klipper register/indeks væk.                                               |
+| `[[chapters]]`  | Kun ved `manual`: `num`, `page` (sideindeks), `title` pr. kapitel.                                   |
+| `[titles]`      | Kun ved `kapitel`: `nr = "titel"`.                                                                   |
 
 ### Kapitelgrænser og body_end (den manuelle del)
 
@@ -387,13 +400,13 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
 
 ## Fejlfinding
 
-| Symptom | Årsag / løsning |
-|---|---|
-| `UnicodeEncodeError ... charmap` | Windows cp1252-konsol. `run.py` sætter selv UTF-8; kald ellers med `PYTHONIOENCODING=utf-8`. |
+| Symptom                          | Årsag / løsning                                                                                                            |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `UnicodeEncodeError ... charmap` | Windows cp1252-konsol. `run.py` sætter selv UTF-8; kald ellers med `PYTHONIOENCODING=utf-8`.                               |
 | ScanTailor finder ikke / 0 sider | Tjek stien til `scantailor-cli.exe` (sæt `SCANTAILOR_CLI`). Æ/ø i kildesti håndteres ved at kopiere til ASCII-navne først. |
-| Sider opdelt/skæve forkert | Kør bogen i ScanTailor **GUI'en**, ret split/deskew visuelt, OCR så output. |
-| Kapitler starter forkert | Juster `page`/`body_end` i config, kør `detect` igen. |
-| Ingen MP3 / netværksfejl | edge-tts kræver internet; der er indbygget retry (5 forsøg). |
+| Sider opdelt/skæve forkert       | Kør bogen i ScanTailor **GUI'en**, ret split/deskew visuelt, OCR så output.                                                |
+| Kapitler starter forkert         | Juster `page`/`body_end` i config, kør `detect` igen.                                                                      |
+| Ingen MP3 / netværksfejl         | edge-tts kræver internet; der er indbygget retry (5 forsøg).                                                               |
 
 ---
 
@@ -425,8 +438,8 @@ Output (`pages_hq/`, `tekst/`, `mp3/`) lægges i hver bogs `output_dir` —
 
 ### Daterede mapper — aldrig generiske navne
 
-Outputmapperne i work-dir er historik og varianter (fx `tekst_B2c/`,
-`mp3_B2c/`) — de bliver liggende. `Current best` er en kopi af det bedste
+Outputmapperne i work-dir er historik og varianter (fx `tekst/`,
+`mp3/`) — de bliver liggende. `Current best` er en kopi af det bedste
 resultat til dato fra outputmapperne, så man kan se hvad der skal bruges:
 daterede sæt `<YYYY-MM-DD_HH-MM>_<kilde>`
 (fx `2026-09-24_13-54_tekst_B2c` = 24. sept. 2026 kl. 13.54), dateret ved
