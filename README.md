@@ -97,7 +97,11 @@ læserækkefølge. Resultat: `pages_hq/000.txt`, `001.txt`, … Rører ingen sø
 > deskewer/dewarper hver side. Sæt `split_spreads = false` i config for bøger
 > fotograferet én side ad gangen (ScanTailor layout=1).
 
-### 2b. Alternativ OCR: PaddleOCR (en mulig fremgangsmåde)
+### 2b. Bibemærkning: PaddleOCR på almindelig laptop (lokal OCR uden API-nøgle)
+
+> **Ikke hovedvejen.** Hovedvejen er MistralOCR + B2c (afsnit 2d).
+> Nedenstående er bevaret til dem der vil køre OCR lokalt på en almindelig
+> laptop uden API-nøgle.
 
 EasyOCR's paragraph-mode **scrambler læserækkefølgen** på stærkt krumme fotos
 (højre ende af en linje falder ned i næste linje → "vejrettens oprin -
@@ -105,8 +109,7 @@ kerakteofra"). Ingen ordbog/heuristik kan rette rækkefølge-fejl. **PaddleOCR
 (PP-OCRv6, `lang="da"`) løser det ved roden**: korrekt rækkefølge + korrekt æøå
 
 + verbatim (ikke generativ → ingen hallucination). Det er mere opsætning, men
-  kan være vejen når EasyOCR-resultatet svinger. Fremgangsmåden vi brugte til
-  begge nuværende bøger:
+  er vejen når OCR skal køre lokalt på en almindelig laptop. Fremgangsmåden:
 1. **Separat venv** (paddlepaddle har ingen wheels til Python 3.14): lav et
    Python 3.12-venv med `uv` og installér `paddlepaddle==3.2.2 paddleocr==3.7.0`
    (`numpy>=2,<3`). Vigtigt: **paddle 3.2.2** — 3.3.1 har en oneDNN/PIR-bug der
@@ -159,7 +162,7 @@ detektion overlever som reststøj.
 0 detektionsbokse over ved re-OCR — ellers risikerer et re-run at *introducere*
 hallucinationer på sider der er rene i dag.
 
-### 2d. MistralOCR + B2c: modstående sider er løst ved kilden — spring haleklip over
+### 2d. Hovedvejen: MistralOCR + B2c (modstående sider løst ved kilden)
 
 B2c klipper nabostrimler ved kilden på billedniveau (afsnit 2c), og MistralOCR
 læser kun den rene side. Der kommer derfor ikke længere tekst fra den
