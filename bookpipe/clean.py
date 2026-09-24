@@ -252,6 +252,8 @@ def clean_for_tts(text, known=frozenset(), keep_footnotes=False):
     out = []
     for ln in text.split("\n"):
         s = _clean_line(ln)
+        # Haleklip mod modstående-side støj (EasyOCR-tiden). Kør ikke på
+        # Mistral/B2c-kilder — se README 2d ("klippede haler").
         s = _strip_trailing_garbage_words(s)
         if not s:
             continue

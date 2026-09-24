@@ -152,6 +152,22 @@ detektion overlever som reststøj.
 0 detektionsbokse over ved re-OCR — ellers risikerer et re-run at *introducere*
 hallucinationer på sider der er rene i dag.
 
+### 2d. MistralOCR + B2c: modstående sider er løst ved kilden — spring haleklip over
+
+B2c klipper nabostrimler ved kilden på billedniveau (afsnit 2c), og MistralOCR
+læser kun den rene side. Der kommer derfor ikke længere tekst fra den
+modstående side ind i sideteksten, og tekst-niveauets haleklippere i `clean.py`
+(`_clean_line`s hale-regex + `_strip_trailing_garbage_words`) er forældede på
+Mistral/B2c-kilder. De var skrevet til ScanTailor/EasyOCR-tiden, hvor
+gennemskin og nabostrimler efterlod støj-tokens i linjernes haler — på rene
+kilder klipper de i stedet ægte haler af ("klippede haler"). Samme mønster som
+`_is_strip_fragment`, der allerede er fjernet af netop den grund: når strimlen
+fjernes ved kilden, giver tekst-filteret kun falske positiver.
+
+Workflow for Mistral/B2c-bøger: kør MistralOCR på de B2c-klippede sider og brug
+sideteksten direkte — kør ikke EasyOCR-tidens hale-rensning på den.
+Vejjura-bogens 12 B2c-kapiteltekster er verificeret uden afklippede haler.
+
 ### 3. Find kapitelgrænser  ·  `python run.py detect <bog>`
 Se afsnittet **Kapitelgrænser og body_end** nedenfor. Juster config og kør
 `detect` igen indtil opdelingen ser rigtig ud.
