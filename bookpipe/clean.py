@@ -122,17 +122,6 @@ def _clean_line(s):
     return s.strip()
 
 
-def _strip_trailing_garbage_words(s):
-    """Strip trailing ord der scorer lavt (OCR-artefakter i højre margin)."""
-    words = s.split()
-    while len(words) > 2:
-        if _word_quality(words[-1]) < 0.5:
-            words.pop()
-        else:
-            break
-    return " ".join(words)
-
-
 def is_garbage(line):
     """Detektér OCR-volapyk med ordkvalitets-scoring."""
     s = line.strip()
@@ -252,9 +241,6 @@ def clean_for_tts(text, known=frozenset(), keep_footnotes=False):
     out = []
     for ln in text.split("\n"):
         s = _clean_line(ln)
-        # Haleklip mod modstående-side støj (EasyOCR-tiden). Kør ikke på
-        # Mistral/B2c-kilder — se README 2d ("klippede haler").
-        s = _strip_trailing_garbage_words(s)
         if not s:
             continue
         if _is_statute_box(s):                         # grå §-citatboks -> drop

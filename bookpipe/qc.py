@@ -17,8 +17,7 @@ Ingen af dem fanger 'scramblet-men-ægte' rækkefølge alene — derfor er sidst
 en menneske/LLM-læsning af de top-flagede sider.
 """
 import re
-from .clean import (_word_quality, _is_strip_fragment, is_garbage,
-                    _clean_line, _strip_trailing_garbage_words)
+from .clean import (_word_quality, _is_strip_fragment, is_garbage)
 from .dictionary import is_real_word, has_dictionary
 
 

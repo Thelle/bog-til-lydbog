@@ -163,13 +163,14 @@ hallucinationer på sider der er rene i dag.
 
 B2c klipper nabostrimler ved kilden på billedniveau (afsnit 2c), og MistralOCR
 læser kun den rene side. Der kommer derfor ikke længere tekst fra den
-modstående side ind i sideteksten, og tekst-niveauets haleklippere i `clean.py`
-(`_clean_line`s hale-regex + `_strip_trailing_garbage_words`) er forældede på
-Mistral/B2c-kilder. De var skrevet til ScanTailor/EasyOCR-tiden, hvor
+modstående side ind i sideteksten. Tekst-niveauets haleklip er derfor forældet
+på Mistral/B2c-kilder: `_strip_trailing_garbage_words` er fjernet helt, og
+`_clean_line`s hale-regex var skrevet til ScanTailor/EasyOCR-tiden, hvor
 gennemskin og nabostrimler efterlod støj-tokens i linjernes haler — på rene
-kilder klipper de i stedet ægte haler af ("klippede haler"). Samme mønster som
-`_is_strip_fragment`, der allerede er fjernet af netop den grund: når strimlen
-fjernes ved kilden, giver tekst-filteret kun falske positiver.
+kilder klipper den i stedet ægte haler af ("klippede haler"). Samme mønster som
+`_is_strip_fragment`, der allerede er taget ud af renseflowet af netop den grund
+(den indgår stadig i qc-rangering): når strimlen fjernes ved kilden, giver
+tekst-filteret kun falske positiver.
 
 Workflow for Mistral/B2c-bøger: kør MistralOCR på de B2c-klippede sider og brug
 sideteksten direkte — kør ikke EasyOCR-tidens hale-rensning på den.
@@ -304,6 +305,8 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   (hele siden måler ~200 grå), og den svage spejlvendte tekst fra bagsiden bliver
   OCR'et som støj-tokens ("NE", "A b") midt i linjerne — det der lignede scramble.
   Et simpelt hvidpunkt-klip (lyst -> hvidt) fjerner det uden at røre den mørke tekst.
+  Det tager kun gennemslag (bagside-gennemskin) — ikke nabostrimler fra den
+  modstående side; dem fjerner kun B2c (afsnit 2c).
 - **EasyOCR slår Tesseract** — efter grayscale+hvidpunkt. Tesseracts rækkebaserede
   layout-analyse flækker linjer hvis højresiden "drypper" nær ryggen
   ("servitutforpligtet udfører" bliver til to stumper). EasyOCR detekterer
@@ -328,6 +331,17 @@ ikke-ord-linjer (registre scorer lavt), eller kig blot på de sidste 20 sider.
   præcist (fx `byggelinje`), men laget behøver ikke matche
   pipeline-teksten ordret — derfor læser Tesseract billederne
   selvstændigt til hOCR i stedet for at fordele andres ord. Se trin 6.
+- **Modstående sider fjernes kun ved kilden (B2c) — aldrig med tekst-filtre.**
+  Haleklipperen `_strip_trailing_garbage_words` var skrevet til EasyOCR-tiden,
+  hvor nabostrimler efterlod støj-tokens i linjernes haler. På rene B2c-kilder
+  klippede den i stedet ægte haler af ("klippede haler") — derfor fjernet fra
+  `clean.py` (se 2d).
+- **`_is_strip_fragment` er ude af renseflowet.** Samme læring: når strimlen
+  fjernes ved kilden, giver tekst-filteret kun falske positiver. Funktionen
+  bruges stadig kun i `qc.py`s frag-signal.
+- **Ingen blind beskæring (B2b).** Beskæring til boks-union med faste caps
+  klippede ægte tekst — se dumpet spor 1. Klip kun ved påvist strimlegrænse
+  + krydsnings-garde (2c).
 
 ## Dumpede spor (læs før du genopfinder dem)
 
